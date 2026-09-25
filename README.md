@@ -44,7 +44,7 @@ Eén rad is groot en centraal; meerdere raderen krijgen een responsive grid van 
 
 Repository: https://github.com/TimZegveld/bierrad
 
-Vite gebruikt `base: './'`, zodat gebouwde bestanden ook onder `/bierrad/` werken. De meegeleverde GitHub Actions-workflow test, controleert TypeScript, bouwt bij pushes naar `main`; publiceren gebeurt alleen als hosting is ingeschakeld (zie hieronder). Kies in **Settings → Pages → Build and deployment → Source** voor **GitHub Actions**. De site komt daarna op https://timzegveld.github.io/bierrad/ . Voor handmatige hosting kun je de inhoud van `dist` als statische website publiceren. Er zijn geen serverroutes nodig.
+Vite gebruikt `base: './'`, zodat gebouwde bestanden ook onder `/bierrad/` werken. De meegeleverde GitHub Actions-workflow test, controleert TypeScript, bouwt bij pushes naar `main`; publiceren is voor deze repository ingeschakeld via GitHub Actions. Kies in **Settings → Pages → Build and deployment → Source** voor **GitHub Actions**. De publieke app staat op [timzegveld.github.io/bierrad](https://timzegveld.github.io/bierrad/). Voor handmatige hosting kun je de inhoud van `dist` als statische website publiceren. Er zijn geen serverroutes nodig.
 
 ## Architectuur
 
@@ -106,4 +106,4 @@ Succes heren/dames. Het volk heeft dorst.
 
 ### Hosting inschakelen
 
-Deployment staat standaard uit. Voeg na het instellen van GitHub Pages de repositoryvariabele ENABLE_PAGES met waarde true toe onder Settings → Secrets and variables → Actions → Variables. Start daarna de workflow opnieuw. Controleer voor deze privérepository of Pages beschikbaar is binnen je GitHub-abonnement. Tests en builds werken ook zonder hosting.
+Deze repository is publiek. Pages gebruikt GitHub Actions en de repositoryvariabele `ENABLE_PAGES` staat op `true`. Iedere push naar `main` doorloopt tests, TypeScript en de productiebuild en publiceert daarna `dist`. Publiceer niet rechtstreeks de bronbestanden via Deploy from a branch. Voor een kopie van dit project: kies GitHub Actions als Pages-bron en voeg `ENABLE_PAGES=true` toe onder Settings → Secrets and variables → Actions → Variables. Tests en builds werken ook zonder hosting.

@@ -2,6 +2,10 @@
 
 Wie haalt deze week het bier? Een zelfstandige, Nederlandstalige React-app voor de vrijdagmiddag. Voeg deelnemers toe en draai twee keer: twee verschillende collega's worden de bierhalers. Geen account, database, Slack of betaalde diensten nodig.
 
+## Productvisie
+
+Lees [de productvisie](vision.md) voor de kernervaring, productprincipes en richting van Bierrad. Gebruik dit document als referentie bij ontwerpkeuzes en nieuwe features; toekomstige ideeën zijn geen MVP-requirements.
+
 ## Lokaal starten
 
 Gebruik Node.js 22.12+ (of 20.19+).

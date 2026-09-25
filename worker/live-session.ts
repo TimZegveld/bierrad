@@ -1,3 +1,11 @@
+import { SlackApiClient, SlackError } from "./slack/api";
+import {
+  SlackReactionParticipantSource,
+  parseSlackPermalink,
+} from "./slack/source";
+import { reconcile, postResult } from "./slack/state";
+import { slackAllowed, type SlackSecrets } from "./slack/access";
+import { getCapabilities } from "../src/domain/capabilities";
 import { DurableObject } from "cloudflare:workers";
 import { equalHash, hashSecret, parseCapability } from "./auth";
 import {
@@ -18,7 +26,7 @@ interface Attachment {
   window: number;
   messages: number;
 }
-export class LiveSession extends DurableObject<Env> {
+export class LiveSession extends DurableObject<Env & SlackSecrets> {
   private read(): StoredSession | undefined {
     if (
       !this.ctx.storage.sql
@@ -37,12 +45,20 @@ export class LiveSession extends DurableObject<Env> {
       JSON.stringify(record),
     );
   }
-  async initialize(hostHash: string, spectatorHash: string): Promise<string> {
+  async initialize(
+    hostHash: string,
+    spectatorHash: string,
+    grant?: { hash: string; expiresAt: number },
+  ): Promise<string> {
     if (this.read()) throw new Error("unavailable");
     this.ctx.storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS session (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), value TEXT NOT NULL)",
     );
     const record = newSession(hostHash, spectatorHash, Date.now());
+    if (grant) {
+      record.slack = { grantHash: grant.hash, mapping: {} };
+      record.expiresAt = Math.min(record.expiresAt, grant.expiresAt);
+    }
     this.save(record);
     await this.ctx.storage.setAlarm(record.expiresAt);
     return new Date(record.expiresAt).toISOString();
@@ -65,7 +81,35 @@ export class LiveSession extends DurableObject<Env> {
   ): ServerToClientMessage {
     return {
       type: "snapshot",
-      session: publicSession(record),
+      session: {
+        ...publicSession(record),
+        ...(role === "host" && record.slack
+          ? {
+              slack: {
+                enabled: slackAllowed(record.slack.grantHash, this.env),
+                source: record.slack.source
+                  ? ("slack" as const)
+                  : ("manual" as const),
+                importing:
+                  !!record.slack.importing &&
+                  record.slack.importing.until > Date.now(),
+                count: record.slack.count,
+                syncedAt: record.slack.syncedAt,
+                ...(record.slack.job
+                  ? {
+                      result: {
+                        drawId: record.slack.job.drawId,
+                        status: record.slack.job.status,
+                        ...(record.slack.job.status === "failed"
+                          ? { retryAt: record.slack.job.retryAt }
+                          : {}),
+                      },
+                    }
+                  : {}),
+              },
+            }
+          : {}),
+      },
       role,
       serverNow: Date.now(),
     };
@@ -114,6 +158,22 @@ export class LiveSession extends DurableObject<Env> {
         this.save(record);
         this.broadcast(record);
       }
+      if (
+        command &&
+        typeof command === "object" &&
+        "type" in command &&
+        command.type === "slackImport"
+      ) {
+        return await this.importSlack(record, role, command);
+      }
+      if (
+        command &&
+        typeof command === "object" &&
+        "type" in command &&
+        command.type === "slackRetry" &&
+        !slackAllowed(record.slack?.grantHash, this.env)
+      )
+        throw new RequestError(403, "forbidden");
       if (command !== null) {
         mutate(record, role, command, Date.now());
         this.save(record);
@@ -132,8 +192,17 @@ export class LiveSession extends DurableObject<Env> {
       return json(result);
     } catch (error) {
       return json(
-        { code: error instanceof RequestError ? error.code : "unavailable" },
-        error instanceof RequestError ? error.status : 503,
+        {
+          code:
+            error instanceof RequestError || error instanceof SlackError
+              ? error.code
+              : "unavailable",
+        },
+        error instanceof RequestError
+          ? error.status
+          : error instanceof SlackError
+            ? 400
+            : 503,
       );
     }
   }
@@ -175,8 +244,17 @@ export class LiveSession extends DurableObject<Env> {
       });
     } catch (error) {
       return json(
-        { code: error instanceof RequestError ? error.code : "unavailable" },
-        error instanceof RequestError ? error.status : 503,
+        {
+          code:
+            error instanceof RequestError || error instanceof SlackError
+              ? error.code
+              : "unavailable",
+        },
+        error instanceof RequestError
+          ? error.status
+          : error instanceof SlackError
+            ? 400
+            : 503,
       );
     }
   }
@@ -242,6 +320,162 @@ export class LiveSession extends DurableObject<Env> {
       this.save(record);
       this.broadcast(record);
     }
+    if (record.slack?.importing && record.slack.importing.until <= Date.now()) {
+      delete record.slack.importing;
+      record.revision++;
+      this.save(record);
+      this.broadcast(record);
+    }
+    await this.processSlackResult();
+    const latest = this.read();
+    if (latest && Date.now() < latest.expiresAt)
+      await this.ctx.storage.setAlarm(nextDeadline(latest));
+  }
+  private async importSlack(
+    record: StoredSession,
+    role: ClientRole,
+    raw: object,
+  ): Promise<Response> {
+    const command = raw as Record<string, unknown>;
+    if (role !== "host" || !slackAllowed(record.slack?.grantHash, this.env))
+      throw new RequestError(403, "forbidden");
+    if (
+      Object.keys(command).some(
+        (k) => !["type", "revision", "permalink"].includes(k),
+      ) ||
+      ("permalink" in command && typeof command.permalink !== "string")
+    )
+      throw new RequestError(400, "invalid");
+    if (
+      command.revision !== record.revision ||
+      !getCapabilities(role, record.session).canManageParticipants
+    )
+      throw new RequestError(409, "not_ready");
+    const state = record.slack!;
+    if (
+      (state.importing?.until ?? 0) > Date.now() ||
+      (state.nextImportAt ?? 0) > Date.now()
+    )
+      throw new RequestError(429, "slack_rate_limited");
+    const source =
+      command.permalink !== undefined
+        ? parseSlackPermalink(command.permalink)
+        : state.source;
+    if (!source) throw new RequestError(400, "slack_link");
+    const id = crypto.randomUUID();
+    state.importing = { id, until: Date.now() + 120000 };
+    state.nextImportAt = Date.now() + 60000;
+    record.revision++;
+    this.save(record);
+    this.broadcast(record);
     await this.ctx.storage.setAlarm(nextDeadline(record));
+    try {
+      const people = await new SlackReactionParticipantSource(
+        new SlackApiClient(this.env.SLACK_BOT_TOKEN!),
+      ).getParticipants(source);
+      const current = this.read();
+      if (
+        !current ||
+        Date.now() >= current.expiresAt ||
+        current.slack?.importing?.id !== id ||
+        !slackAllowed(current.slack.grantHash, this.env)
+      )
+        throw new RequestError(409, "unavailable");
+      reconcile(current, source, people, Date.now());
+      delete current.slack.importing;
+      current.revision++;
+      this.save(current);
+      this.broadcast(current);
+      const result = this.message(current, role);
+      await this.ctx.storage.setAlarm(nextDeadline(current));
+      if (Date.now() >= current.expiresAt)
+        throw new RequestError(404, "unavailable");
+      return json(result);
+    } catch (error) {
+      const current = this.read();
+      if (
+        current &&
+        Date.now() < current.expiresAt &&
+        current.slack?.importing?.id === id
+      ) {
+        delete current.slack.importing;
+        current.slack.nextImportAt = Math.max(
+          current.slack.nextImportAt ?? 0,
+          Date.now() +
+            (error instanceof SlackError ? error.retryAfterMs : 60000),
+        );
+        current.revision++;
+        this.save(current);
+        this.broadcast(current);
+        await this.ctx.storage.setAlarm(nextDeadline(current));
+      }
+      return json(
+        {
+          code:
+            error instanceof SlackError
+              ? error.code
+              : error instanceof RequestError
+                ? error.code
+                : "slack_unavailable",
+        },
+        error instanceof SlackError && error.code === "slack_rate_limited"
+          ? 429
+          : 400,
+      );
+    }
+  }
+  private async processSlackResult() {
+    const record = this.read();
+    const job = record?.slack?.job;
+    if (!record || Date.now() >= record.expiresAt || !job) return;
+    if (job.status === "posting") {
+      if (Date.now() >= job.attemptedAt! + 120000) {
+        job.status = "uncertain";
+        record.revision++;
+        this.save(record);
+        this.broadcast(record);
+      }
+      return;
+    }
+    if (job.status !== "pending" || job.readyAt > Date.now()) return;
+    if (!slackAllowed(record.slack!.grantHash, this.env)) {
+      job.status = "failed";
+      job.retryAt = Date.now() + 60000;
+      record.revision++;
+      this.save(record);
+      this.broadcast(record);
+      return;
+    }
+    // Claim synchronously before any await. Persist + arm crash recovery before external I/O.
+    job.status = "posting";
+    job.attemptedAt = Date.now();
+    record.revision++;
+    this.save(record);
+    this.broadcast(record);
+    await this.ctx.storage.setAlarm(nextDeadline(record));
+    await this.ctx.storage.sync();
+    const current = this.read();
+    if (
+      !current ||
+      Date.now() >= current.expiresAt ||
+      !slackAllowed(current.slack?.grantHash, this.env)
+    )
+      return;
+    const result = await postResult(
+      new SlackApiClient(this.env.SLACK_BOT_TOKEN!),
+      job,
+    );
+    const latest = this.read();
+    if (
+      !latest ||
+      Date.now() >= latest.expiresAt ||
+      latest.slack?.job?.drawId !== job.drawId ||
+      latest.slack.job.status !== "posting"
+    )
+      return;
+    Object.assign(latest.slack.job, result);
+    latest.revision++;
+    this.save(latest);
+    this.broadcast(latest);
   }
 }

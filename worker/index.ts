@@ -1,3 +1,4 @@
+import { authorizeStart, type SlackSecrets } from "./slack/access";
 import { randomHex, parseCapability, hashSecret } from "./auth";
 import { json, readBody } from "./http";
 import { RequestError } from "./session";
@@ -27,7 +28,10 @@ export default {
         const ip = request.headers.get("CF-Connecting-IP") ?? "local";
         if (!(await env.REQUEST_LIMIT.limit({ key: ip })).success)
           throw new RequestError(429, "rate_limited");
-        if (url.pathname === "/api/sessions" && request.method === "POST") {
+        if (
+          ["/api/sessions", "/api/slack-sessions"].includes(url.pathname) &&
+          request.method === "POST"
+        ) {
           if (
             !(await env.CREATION_LIMIT.limit({ key: ip })).success ||
             !(await env.CREATION_GLOBAL.limit({ key: "creation" })).success
@@ -41,6 +45,12 @@ export default {
             Object.keys(body).length
           )
             throw new RequestError(400, "invalid");
+          const grant =
+            url.pathname === "/api/slack-sessions"
+              ? await authorizeStart(request.headers.get("Authorization"), env)
+              : undefined;
+          if (url.pathname === "/api/slack-sessions" && !grant)
+            throw new RequestError(404, "unavailable");
           const locator = randomHex(16),
             host = randomHex(),
             spectator = randomHex();
@@ -51,6 +61,7 @@ export default {
           const expiresAt = await env.SESSIONS.getByName(locator).initialize(
             hostHash,
             spectatorHash,
+            grant,
           );
           response = json(
             {
@@ -113,4 +124,4 @@ export default {
     response.headers.set("Vary", "Origin");
     return response;
   },
-} satisfies ExportedHandler<Env>;
+} satisfies ExportedHandler<Env & SlackSecrets>;

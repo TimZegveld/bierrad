@@ -1,0 +1,18 @@
+{
+  "display_information": {
+    "name": "Bierrad",
+    "description": "Samen draaien, samen bier halen.",
+    "background_color": "#d9a323"
+  },
+  "features": {
+    "bot_user": { "display_name": "Bierrad", "always_online": false }
+  },
+  "oauth_config": {
+    "scopes": { "bot": ["reactions:read", "users:read", "chat:write"] }
+  },
+  "settings": {
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}

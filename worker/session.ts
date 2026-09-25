@@ -1,3 +1,4 @@
+import { queueResult, type SlackState } from "./slack/state";
 import {
   createSession,
   startDraw,
@@ -29,6 +30,7 @@ export interface StoredSession {
   mutationWindow: number;
   mutations: number;
   draws: number;
+  slack?: SlackState;
 }
 export function newSession(
   hostHash: string,
@@ -97,6 +99,11 @@ export function nextDeadline(record: StoredSession): number {
   const s = record.session,
     draw = s.activeDraw;
   const times = [record.expiresAt];
+  const slack = record.slack;
+  if (slack?.importing) times.push(slack.importing.until);
+  if (slack?.job?.status === "pending") times.push(slack.job.readyAt);
+  if (slack?.job?.status === "posting")
+    times.push(slack.job.attemptedAt! + 120000);
   if (draw && s.state === "countdown") times.push(Date.parse(draw.startAt));
   if (draw && ["countdown", "spinning"].includes(s.state))
     times.push(
@@ -130,6 +137,8 @@ export function mutate(
     startDraw: [],
     reset: [],
     endSession: [],
+    slackManual: [],
+    slackRetry: [],
   };
   if (
     typeof command.type !== "string" ||
@@ -150,6 +159,18 @@ export function mutate(
     (command.type === "startDraw" && record.draws >= 6)
   )
     throw new RequestError(429, "rate_limited");
+  if (
+    command.type !== "endSession" &&
+    record.slack?.importing &&
+    record.slack.importing.until > now
+  )
+    throw new RequestError(409, "slack_busy");
+  if (
+    ["reset", "startDraw"].includes(String(command.type)) &&
+    record.slack?.job &&
+    ["pending", "posting"].includes(record.slack.job.status)
+  )
+    throw new RequestError(409, "slack_posting");
   const caps = getCapabilities(role, record.session);
   const require = (value: boolean) => {
     if (!value) throw new RequestError(409, "not_ready");
@@ -213,6 +234,8 @@ export function mutate(
         }),
         state: "countdown",
       };
+      if (record.slack) delete record.slack.job;
+      queueResult(record);
       record.draws++;
       break;
     case "reset":
@@ -223,6 +246,22 @@ export function mutate(
         record.preferredCount,
       );
       break;
+    case "slackManual":
+      require(caps.canManageParticipants);
+      if (!record.slack) throw new RequestError(403, "forbidden");
+      delete record.slack.source;
+      delete record.slack.syncedAt;
+      delete record.slack.count;
+      record.slack.mapping = {};
+      break;
+    case "slackRetry": {
+      const job = record.slack?.job;
+      if (!job || job.status !== "failed" || now < (job.retryAt ?? Infinity))
+        throw new RequestError(409, "not_ready");
+      job.status = "pending";
+      job.readyAt = now;
+      break;
+    }
     case "endSession":
       record.expiresAt = now;
       break;

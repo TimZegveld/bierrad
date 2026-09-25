@@ -8,3 +8,5 @@ dist/
 .wrangler/
 worker-dist/
 *.cpuprofile
+
+.private-slack/

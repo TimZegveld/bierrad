@@ -35,9 +35,6 @@ export function FinalResult({
           <button className="text-button" disabled={disabled} onClick={onSetup}>
             Deelnemers aanpassen
           </button>
-          <button className="slack-future" disabled>
-            Plaats winnaars in Slack · Binnenkort
-          </button>
         </>
       )}
     </section>

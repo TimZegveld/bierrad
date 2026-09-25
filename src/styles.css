@@ -130,6 +130,9 @@ header {
   position: relative;
   margin: 0 auto;
   filter: drop-shadow(0 15px 15px #59431a20);
+  /* A rotated square SVG must not create horizontal scrolling on phones. */
+  overflow: clip;
+  overflow-clip-margin: 12px;
 }
 .wheel-shell svg {
   display: block;
@@ -730,10 +733,85 @@ footer b {
   }
 }
 
-.live-bar { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:12px; padding:12px 20px; background:#f2ecdD; font-size:14px; }
-.live-bar button { border:1px solid #d4c7a7; border-radius:20px; padding:8px 14px; background:#fff8e9; }
-.live-bar small { color:#596f60; }
-.live-bar p { flex-basis:100%; text-align:center; margin:0; }
-.live-bar a { text-decoration:underline; }
-.unavailable { max-width:700px; margin:15vh auto; padding:24px; text-align:center; }
-.unavailable a { text-decoration:underline; }
+.live-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 20px;
+  background: #f2ecdd;
+  font-size: 14px;
+}
+.live-bar button {
+  border: 1px solid #d4c7a7;
+  border-radius: 20px;
+  padding: 8px 14px;
+  background: #fff8e9;
+}
+.live-bar small {
+  color: #596f60;
+}
+.live-bar p {
+  flex-basis: 100%;
+  text-align: center;
+  margin: 0;
+}
+.live-bar a {
+  text-decoration: underline;
+}
+.unavailable {
+  max-width: 700px;
+  margin: 15vh auto;
+  padding: 24px;
+  text-align: center;
+}
+.unavailable a {
+  text-decoration: underline;
+}
+
+.source-tabs button[aria-pressed="true"] {
+  background: #fffdf8;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px #0001;
+  font-weight: 700;
+}
+.slack-import {
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #e7dfcc;
+}
+.slack-import input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.slack-import p,
+.slack-result {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.slack-import .primary {
+  width: 100%;
+  padding: 12px 8px;
+  font-size: 12px;
+}
+.slack-result {
+  max-width: 540px;
+  margin: 16px auto;
+  padding: 8px 18px;
+  border-radius: 12px;
+  background: #f1e8cf;
+  text-align: center;
+}
+
+.slack-import > button,
+.slack-result button {
+  border: 1px solid #d9caac;
+  border-radius: 8px;
+  background: #fffdf8;
+  color: #353329;
+  padding: 9px 14px;
+  font: inherit;
+  cursor: pointer;
+}

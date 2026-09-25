@@ -9,9 +9,11 @@ export function ParticipantManager({
   readOnly,
   onChange,
   onRestore,
+  sourceControls,
 }: {
   people: readonly Participant[];
   live?: boolean;
+  sourceControls?: import("react").ReactNode;
   locked: boolean;
   readOnly: boolean;
   onChange: (p: Participant[]) => void;
@@ -31,12 +33,9 @@ export function ParticipantManager({
       </div>
       {!readOnly && (
         <>
-          <div className="source-tabs">
-            <span>✎ &nbsp; Handmatig</span>
-            <button disabled title="Binnenkort via een beveiligde backend">
-              Slack 🍻 <small>Binnenkort</small>
-            </button>
-          </div>
+          {sourceControls ?? (
+            <p className="storage-note">✎ Handmatige deelnemers</p>
+          )}
           <form
             onSubmit={(e) => {
               e.preventDefault();

@@ -134,7 +134,7 @@ npm run build:worker
 npm run deploy:worker
 ```
 
-De top-level `wrangler.jsonc` is productie, `development` alleen lokaal. De eerste deploy maakt de SQLite Durable Object-namespace via migratie `v1`. Er is geen Slack-token, signing secret of andere runtimecredential nodig. Cloudflare-deploycredentials blijven bij Wrangler/secretbeheer en gaan nooit de frontend in. Kies binnen je Cloudflare-account unieke rate-limit namespace-nummers als andere Workers de ingestelde nummers al gebruiken.
+De top-level `wrangler.jsonc` is productie, `development` alleen lokaal. De eerste deploy maakt de SQLite Durable Object-namespace via migratie `v1`. Voor handmatige live-sessies is geen runtimecredential nodig. Optionele Slack-sessies vereisen uitsluitend serversecrets; zie [Slack instellen](docs/slack-setup.md). Cloudflare-deploycredentials blijven bij Wrangler/secretbeheer en gaan nooit de frontend in. Kies binnen je Cloudflare-account unieke rate-limit namespace-nummers als andere Workers de ingestelde nummers al gebruiken.
 
 Na deploy: zet de repositoryvariabele `VITE_API_URL` op de publieke HTTPS Worker-origin. De bestaande Pages-workflow gebruikt alleen deze publieke variabele. Een push naar `main` valideert frontend én backend en publiceert `dist` als `ENABLE_PAGES=true`. De Worker wordt bewust apart met Wrangler gepubliceerd; Pages CI krijgt geen Cloudflare-credentials. Deploy compatibele backendwijzigingen vóór het frontend.
 
@@ -150,4 +150,22 @@ Tijdelijke toegang is niet hetzelfde als gebruikersauthenticatie. Links kunnen i
 
 ## Later
 
-Slack en automatische geplande trekkingen zijn **niet geïmplementeerd**. De bestaande ParticipantSource blijft onafhankelijk van aantal winnaars en animaties. Slack wordt uitsluitend een beveiligde serverbron met sessie-ID's voor de client. Een toekomstige scheduler roept dezelfde server-drawoperatie aan. Er is geen permanente medewerkerhistorie.
+Automatische geplande trekkingen zijn niet geïmplementeerd. Een toekomstige scheduler roept dezelfde server-drawoperatie aan. Er is geen permanente medewerkerhistorie.
+
+
+## Slack-deelnemers en threaduitslag
+
+Een bevoegde organisator kan via een **privé-startlink** een Slack-sessie openen. Een gewone publieke host heeft geen Slack-toegang. Kies Slack, plak een berichtlink en haal de `:beers:`-reactors op. Refresh volgt de reacties en behoudt handmatige toevoegingen; gelijke namen krijgen onderscheidende labels met stabiele tijdelijke IDs. Na de trekking post de server de officiële winnaars automatisch in de oorspronkelijke thread, ook als de host gesloten is. Fouten veranderen de uitslag niet; alleen zeker afgewezen posts kunnen gecontroleerd opnieuw worden aangeboden. Bij onzekere aflevering voorkomt Bierrad herverzending.
+
+[Appmanifest en veilige instelling](docs/slack-setup.md) · [Security review en tien antwoorden](docs/slack-security-review.md)
+
+```text
+Privé-startcapability → geautoriseerde tijdelijke Slack-sessie
+SlackReactionParticipantSource (alleen server)
+          ↓ veilige sessie-ID's + namen
+SessionController → Draw Engine → DrawInstruction → Wheel Renderers
+                          ↓ na alle spins, via durable alarm
+                  officiële uitslag → oorspronkelijke Slack-thread
+```
+
+`worker/slack` bevat de getypeerde client, parser, deelnemersbron, private mapping en resultaattekst. `POST /api/slack-sessions` vereist de aparte startcapability in Authorization; overige hostcommando's zijn `slackImport` (optioneel permalink, zonder link = refresh), `slackManual`, `slackRetry`. Ook gemanipuleerde spectatorrequests worden afgewezen. Spectator-DTO's bevatten geen Slack-metadata. De raderen/selectie zijn ongewijzigd en blijven zonder netwerk of Slack functioneren.

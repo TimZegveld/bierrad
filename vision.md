@@ -26,7 +26,7 @@ Het is:
 
 De ideale vrijdagmiddag ziet er zo uit:
 
-1. In Slack verschijnt het wekelijkse bericht over de bierronde (toekomstige integratie).
+1. In Slack verschijnt het wekelijkse bericht over de bierronde.
 2. Collega's melden zich aan met `:beers:`; handmatig invoeren blijft altijd mogelijk.
 3. Iemand opent Bierrad op een groot scherm en laadt de deelnemers.
 4. De host kiest het aantal bierhalers, standaard twee en maximaal het aantal deelnemers.
@@ -37,7 +37,7 @@ De ideale vrijdagmiddag ziet er zo uit:
 9. Alle raderen starten gelijktijdig. De spanning loopt op.
 10. Ze vertragen elk iets anders en stoppen kort na elkaar bij hun vooraf gekozen winnaar.
 11. Ieder rad onthult zijn bierhaler; zodra alle raderen klaar zijn volgt één feestelijke finale.
-12. De uitslag kan later in dezelfde Slack-thread worden geplaatst.
+12. De server plaatst de uitslag van een Slack-sessie in dezelfde thread.
 
 Het hele proces moet binnen ongeveer een minuut kunnen plaatsvinden.
 
@@ -457,7 +457,7 @@ De eerste versie is geslaagd wanneer we op vrijdag:
 6. een leuke winnaarspresentatie zien;
 7. opnieuw kunnen beginnen.
 
-Daarna bouwen we Slack-integratie.
+Optionele Slack-import en threadresultaten bouwen hierop voort, via beveiligde tijdelijke live-sessies.
 
 ---
 
@@ -485,7 +485,7 @@ Collega's kunnen op meerdere browsers en de kantoor-tv naar dezelfde live trekki
 
 ## Host en toeschouwers
 
-Een host beheert handmatig de deelnemers, kiest het aantal bierhalers, start alle raderen tegelijk en kan de trekking resetten. Slack laden blijft toekomstwerk. Toeschouwers kijken alleen mee. Host en kijkers hebben verschillende tijdelijke links via URL-fragmenten; zonder geldige toegang zijn deelnemers niet zichtbaar. De sessie verloopt na acht uur of wanneer de host haar beëindigt. De kantoor-tv is een toeschouwer en hoeft geen bediening te tonen.
+Een host beheert handmatig de deelnemers, kiest het aantal bierhalers, start alle raderen tegelijk en kan de trekking resetten. Via een privé-startlink kan een bevoegde organisator Slack-reactors laden en de uitslag automatisch in de oorspronkelijke thread laten plaatsen. Toeschouwers kijken alleen mee. Host en kijkers hebben verschillende tijdelijke links via URL-fragmenten; zonder geldige toegang zijn deelnemers niet zichtbaar. De sessie verloopt na acht uur of wanneer de host haar beëindigt. De kantoor-tv is een toeschouwer en hoeft geen bediening te tonen.
 
 ## Hetzelfde rad, één autoriteit
 
@@ -503,4 +503,4 @@ Slack blijft de ingang voor deelname via `:beers:` en voor de uitslag. Slack-cre
 
 Een toeschouwer die tijdens het draaien opent, ontvangt de actuele sessie met de oorspronkelijke starttijd en volledige `DrawInstruction` met alle spins. Het scherm moet op het juiste punt instappen of een al voltooide uitslag tonen, zonder zelf opnieuw te loten. De remote controller schat het klokverschil, verbindt opnieuw met oplopende wachttijd en haalt de actuele serverstand op.
 
-LocalSessionController en RemoteSessionController gebruiken dezelfde radcomponenten. Meerdere kijkers, tijdelijke host-/kijkrechten, WebSockets en herstel na verbindingsverlies zijn geïmplementeerd. Gebruikersaccounts, automatische planning en Slack blijven toekomstwerk. Een deelbare link verleent tijdelijke toegang en is geen volledige gebruikersauthenticatie.
+LocalSessionController en RemoteSessionController gebruiken dezelfde radcomponenten. Meerdere kijkers, tijdelijke host-/kijkrechten, WebSockets en herstel na verbindingsverlies zijn geïmplementeerd. Gebruikersaccounts en automatische planning blijven toekomstwerk. Slack-import en automatische threadresultaten zijn optioneel beschikbaar na serverconfiguratie. Een deelbare link verleent tijdelijke toegang en is geen volledige gebruikersauthenticatie.

@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 /** 256 secret bits; the separately random locator grants no access. */
 export function randomHex(bytes = 32): string {
   return Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (b) =>
@@ -18,8 +19,8 @@ export async function hashSecret(secret: string): Promise<string> {
   ).join("");
 }
 export function equalHash(a: string, b: string): boolean {
-  return crypto.subtle.timingSafeEqual(
-    new TextEncoder().encode(a),
-    new TextEncoder().encode(b),
+  return (
+    a.length === b.length &&
+    timingSafeEqual(new TextEncoder().encode(a), new TextEncoder().encode(b))
   );
 }

@@ -20,7 +20,12 @@ export function SessionRoot() {
     window.addEventListener("hashchange", change);
     return () => window.removeEventListener("hashchange", change);
   }, []);
-  return <SessionPage key={hash} hash={hash} />;
+  const invite = /^#\/slack-start\/([a-f0-9]{64})$/.exec(hash);
+  return invite ? (
+    <SlackStart key={hash} capability={invite[1]} />
+  ) : (
+    <SessionPage key={hash} hash={hash} />
+  );
 }
 function SessionPage({ hash }: { hash: string }) {
   const apiUrl = configuredApiUrl();
@@ -171,6 +176,47 @@ function LiveBar({
       )}
       {live && <a href="./">Eigen Bierrad</a>}
       {notice && <p role="status">{notice}</p>}
+    </div>
+  );
+}
+
+function SlackStart({ capability }: { capability: string }) {
+  const [pending, setPending] = useState(false),
+    [error, setError] = useState("");
+  const api = configuredApiUrl();
+  return (
+    <div className="unavailable">
+      <h1>🍻 Jouw vrijdag begint hier.</h1>
+      <p>
+        Start een tijdelijk live Bierrad met Slack. Bewaar deze startlink voor
+        organisatoren; deel straks alleen de kijklink.
+      </p>
+      <button
+        className="primary"
+        disabled={pending || !api}
+        onClick={() => {
+          setPending(true);
+          setError("");
+          void createLiveSession(api!, capability)
+            .then((created) => {
+              location.replace(
+                `${location.pathname}#/host/${created.hostCapability}/${created.spectatorCapability}`,
+              );
+            })
+            .catch(() => {
+              setError(
+                "Deze startlink is verlopen, ingetrokken of Slack is nog niet ingesteld.",
+              );
+              setPending(false);
+            });
+        }}
+      >
+        {pending ? "Klaarzetten…" : "Start Bierrad met Slack 🍻"}
+      </button>
+      {error && <p role="alert">{error}</p>}
+      <p>
+        <a href="./">Liever handmatig draaien</a>
+      </p>
     </div>
   );
 }

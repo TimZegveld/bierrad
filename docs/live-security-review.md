@@ -40,3 +40,7 @@ Implementation review against SECURITY.md, not an independent security audit or 
 - Dependency audit reported zero known vulnerabilities at review time. Searches checked source/config/build for likely secrets, unsafe Vite names, private endpoints and unsafe HTML rendering. The only unsafe-HTML-pattern hit in the built JS was React internals, not application usage. No real employee dataset or company data was added. Examples and acceptance inputs are synthetic.
 
 All six requested security answers are **No**: public Pages URL alone cannot retrieve names; spectator credentials cannot mutate; browsers cannot supply official winners; public APIs cannot enumerate sessions; expired credentials cannot retrieve names; frontend builds contain no privileged backend credentials.
+
+## Slack extension
+
+The original live-session review above remains applicable. Optional Slack access and its separate organizer grant, imports, posting and delivery limitations are reviewed in [slack-security-review.md](slack-security-review.md). Ordinary public session creation still grants no Slack access.

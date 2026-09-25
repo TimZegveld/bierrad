@@ -1,3 +1,4 @@
+import { SlackControls, SlackResultStatus } from "./components/SlackControls";
 import { PlaybackClock } from "./hooks/PlaybackClock";
 import { useState } from "react";
 import { WheelGrid } from "./components/WheelGrid";
@@ -22,6 +23,10 @@ export default function App({ controller }: { controller: SessionController }) {
   } = useBeerWheel(controller);
   const [uiNotice, setNotice] = useState("");
   const notice = error || sessionNotice || uiNotice;
+  const slackBusy = !!live?.slack?.importing;
+  const slackPosting =
+    !!live?.slack?.result &&
+    ["pending", "posting"].includes(live.slack.result.status);
   const spinning = ["countdown", "spinning"].includes(session.state);
   const finished = session.state === "finished";
   const start = () => {
@@ -80,7 +85,7 @@ export default function App({ controller }: { controller: SessionController }) {
             <WinnerCountControl
               count={session.winnerCount}
               max={session.participants.length}
-              disabled={!capabilities.canConfigureDraw || pending}
+              disabled={!capabilities.canConfigureDraw || pending || slackBusy}
               readOnly={!capabilities.canControlSession}
               onChange={(count) => {
                 void run(() => controller.setWinnerCount(count));
@@ -97,14 +102,24 @@ export default function App({ controller }: { controller: SessionController }) {
                   void run(() => controller.reset());
                 }}
                 canControl={capabilities.canControlSession}
-                disabled={!capabilities.canStartDraw || pending}
+                disabled={
+                  !capabilities.canStartDraw ||
+                  pending ||
+                  slackBusy ||
+                  slackPosting
+                }
               />
             ) : (
               <div className="draw-controls" aria-live="polite">
                 {capabilities.canControlSession && (
                   <button
                     className="primary spin-button"
-                    disabled={!capabilities.canStartDraw || pending}
+                    disabled={
+                      !capabilities.canStartDraw ||
+                      pending ||
+                      slackBusy ||
+                      slackPosting
+                    }
                     onClick={start}
                   >
                     {session.state === "countdown"
@@ -125,12 +140,35 @@ export default function App({ controller }: { controller: SessionController }) {
                 </p>
               </div>
             )}
+            {live?.role === "host" && live.slack && (
+              <SlackResultStatus
+                status={live.slack}
+                disabled={pending || live.status !== "connected"}
+                onRetry={() => {
+                  void run(() => controller.retrySlackResult!());
+                }}
+              />
+            )}
           </section>
           <div className="sidebar">
             <ParticipantManager
               live={!!live}
+              sourceControls={
+                live?.role === "host" &&
+                live.slack &&
+                controller.importSlack ? (
+                  <SlackControls
+                    status={live.slack}
+                    locked={!capabilities.canManageParticipants || pending}
+                    onImport={(link) => controller.importSlack!(link)}
+                    onManual={() => controller.useManualSource!()}
+                  />
+                ) : undefined
+              }
               people={session.participants}
-              locked={!capabilities.canManageParticipants || pending}
+              locked={
+                !capabilities.canManageParticipants || pending || slackBusy
+              }
               readOnly={!capabilities.canControlSession}
               onChange={(people) => {
                 void run(() => controller.setParticipants(people));

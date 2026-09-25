@@ -36,16 +36,25 @@ function endpoint(api: string, path: string): string {
 }
 export async function createLiveSession(
   apiUrl: string,
+  startCapability?: string,
 ): Promise<CreatedSession> {
-  const response = await fetch(endpoint(apiUrl, "/api/sessions"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
-    cache: "no-store",
-    credentials: "omit",
-    referrerPolicy: "no-referrer",
-    signal: AbortSignal.timeout(10000),
-  });
+  const response = await fetch(
+    endpoint(apiUrl, startCapability ? "/api/slack-sessions" : "/api/sessions"),
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(startCapability
+          ? { Authorization: `Bearer ${startCapability}` }
+          : {}),
+      },
+      body: "{}",
+      cache: "no-store",
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
+      signal: AbortSignal.timeout(10000),
+    },
+  );
   if (!response.ok)
     throw new Error(
       response.status === 429
@@ -71,6 +80,7 @@ export class RemoteSessionController implements SessionController {
   private pingAt?: number;
   private lastReceived = 0;
   private expiresAt?: string;
+  private slack?: PublicBeerWheelSession["slack"];
   private connecting = false;
   private readonly fetcher: typeof fetch;
   constructor(private readonly options: RemoteOptions) {
@@ -102,7 +112,12 @@ export class RemoteSessionController implements SessionController {
       },
       notice,
       clockOffsetMs: this.offset,
-      live: { role: this.options.role, status, expiresAt: this.expiresAt },
+      live: {
+        role: this.options.role,
+        status,
+        expiresAt: this.expiresAt,
+        slack: this.slack,
+      },
     });
   }
   private publish(
@@ -125,6 +140,7 @@ export class RemoteSessionController implements SessionController {
   private receive(dto: PublicBeerWheelSession) {
     if (this.terminal || this.disposed || dto.revision < this.revision) return;
     this.revision = dto.revision;
+    this.slack = this.options.role === "host" ? dto.slack : undefined;
     this.expiresAt = dto.expiresAt;
     const oldDraw = this.snapshot.session.activeDraw;
     const session: BeerWheelSession = Object.freeze({
@@ -150,6 +166,7 @@ export class RemoteSessionController implements SessionController {
   }
   private unavailable() {
     this.terminal = true;
+    this.slack = undefined;
     clearTimeout(this.retry);
     clearTimeout(this.expiry);
     clearInterval(this.heartbeat);
@@ -175,7 +192,9 @@ export class RemoteSessionController implements SessionController {
       cache: "no-store",
       credentials: "omit",
       referrerPolicy: "no-referrer",
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(
+        command?.type === "slackImport" ? 35000 : 10000,
+      ),
     });
     if (this.disposed || this.terminal) return;
     if (response.status === 404) {
@@ -183,6 +202,30 @@ export class RemoteSessionController implements SessionController {
       return;
     }
     if (!response.ok) {
+      const data = (await response.json().catch(() => ({}))) as {
+        code?: string;
+      };
+      const slackMessages: Record<string, string> = {
+        slack_link:
+          "Plak een volledige Slack-berichtlink. Een threadlink verwijst naar het hoofdbericht.",
+        slack_incomplete:
+          "Slack gaf niet alle reagerende personen terug. Er is niets geïmporteerd.",
+        slack_too_many:
+          "Er passen maximaal 100 deelnemers in een live Bierrad.",
+        slack_rate_limited:
+          "Slack vraagt even geduld. Wacht minstens een minuut en probeer later opnieuw.",
+        slack_rejected:
+          "Controleer of de Bierrad-bot toegang tot het gesprek heeft en de juiste rechten heeft.",
+        slack_response:
+          "Slack gaf geen volledige geldige deelnemerslijst terug. Je lijst is niet aangepast.",
+        slack_unavailable:
+          "Slack ophalen is niet gelukt. Je lijst is niet aangepast.",
+        slack_posting:
+          "De uitslag wordt nog naar Slack verstuurd. Een ogenblik…",
+        slack_busy: "De deelnemers worden nog opgehaald. Een ogenblik…",
+      };
+      if (data.code && slackMessages[data.code])
+        throw new Error(slackMessages[data.code]);
       if (response.status === 409) {
         await this.request("/api/session");
         throw new Error(
@@ -322,6 +365,18 @@ export class RemoteSessionController implements SessionController {
       type: "setParticipants",
       names: people.map((p) => p.name),
     });
+  }
+  importSlack(permalink?: string) {
+    return this.command({
+      type: "slackImport",
+      ...(permalink === undefined ? {} : { permalink }),
+    });
+  }
+  useManualSource() {
+    return this.command({ type: "slackManual" });
+  }
+  retrySlackResult() {
+    return this.command({ type: "slackRetry" });
   }
   setWinnerCount(count: number) {
     return this.command({ type: "setWinnerCount", count });

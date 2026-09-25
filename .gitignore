@@ -3,3 +3,8 @@ dist/
 *.tsbuildinfo
 .env*
 !.env.example
+
+.dev.vars*
+.wrangler/
+worker-dist/
+*.cpuprofile

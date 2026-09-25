@@ -4,12 +4,14 @@ import { addParticipant, removeParticipant } from "../utils/participants";
 import { colors } from "./BeerWheel";
 export function ParticipantManager({
   people,
+  live = false,
   locked,
   readOnly,
   onChange,
   onRestore,
 }: {
   people: readonly Participant[];
+  live?: boolean;
   locked: boolean;
   readOnly: boolean;
   onChange: (p: Participant[]) => void;
@@ -109,9 +111,11 @@ export function ParticipantManager({
             >
               Alles wissen
             </button>
-            <button disabled={locked} onClick={onRestore}>
-              ↶ Vorige lijst
-            </button>
+            {!live && (
+              <button disabled={locked} onClick={onRestore}>
+                ↶ Vorige lijst
+              </button>
+            )}
           </div>
           {confirm && (
             <div className="confirm">
@@ -129,7 +133,9 @@ export function ParticipantManager({
             </div>
           )}
           <p className="storage-note">
-            ▣ &nbsp; Je lijst wordt op dit apparaat bewaard.
+            {live
+              ? "Alleen tijdelijk bewaard voor dit live Bierrad."
+              : "▣ Je lijst wordt op dit apparaat bewaard."}
           </p>
         </>
       )}

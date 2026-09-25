@@ -1,4 +1,4 @@
-<!-- Vastgelegd als projectcontext op verzoek van de gebruiker. De hieronder beschreven documentatie-, audit- en implementatieopdracht is nog niet uitgevoerd. -->
+<!-- Vastgelegd als projectcontext op verzoek van de gebruiker. Historische briefing. De geldende implementatieregels staan nu in SECURITY.md en AGENTS.md; de Live Session-review staat in docs/live-security-review.md. -->
 
 # Bierrad — Establish Security, Privacy and Agent Guardrails
 

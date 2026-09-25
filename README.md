@@ -1,109 +1,153 @@
 # 🍻 Bierrad 🎡
 
-Wie haalt deze week het bier? Een zelfstandige, Nederlandstalige React-app voor de vrijdagmiddag. Voeg deelnemers toe, kies het aantal bierhalers en laat alle raderen tegelijk draaien. Iedere bierhaler krijgt een eigen rad en iedere trekking levert unieke winnaars op. Geen account, database, Slack of betaalde diensten nodig.
+Wie haalt deze week het bier? Voeg deelnemers toe, kies het aantal bierhalers en laat hun raderen tegelijk draaien. Warm, speels en Nederlands. **Geen discussie. Gewoon draaien.**
 
-## Productvisie
+[Open Bierrad](https://timzegveld.github.io/bierrad/) · [Productvisie](vision.md) · [Verplichte beveiligingsregels](SECURITY.md) · [Agentinstructies](AGENTS.md)
 
-Lees [de productvisie](vision.md) voor de kernervaring, productprincipes en richting van Bierrad. Gebruik dit document als referentie bij ontwerpkeuzes en nieuwe features; toekomstige ideeën zijn geen MVP-requirements.
+## Lokaal of live
 
-## Security- en privacykaders
+**Alleen op dit scherm** werkt zelfstandig, zonder backend, account of netwerk. Handmatig ingevoerde deelnemers en de voorkeur voor het aantal bierhalers worden lokaal onthouden. Iedere trekking is onafhankelijk: eerdere winnaars mogen opnieuw winnen.
 
-De [security-, privacy- en agentguardrails](docs/security-guardrails.md) zijn vastgelegd als projectcontext voor toekomstige wijzigingen. Behandel frontend en browser als publiek en onbetrouwbaar; credentials en geprivilegieerde handelingen horen server-side. Toekomstige livegegevens vereisen tijdelijke sessies met afzonderlijke host- en spectatorrechten. De beschreven documentatie- en auditopdracht is nog niet uitgevoerd; dit document is geen afgeronde security-audit.
+**Start live Bierrad** maakt een nieuwe, lege tijdelijke sessie. Je wordt host, voert deelnemers in en deelt **Kopieer kijklink** met collega's of de kantoor-tv. Iedereen ziet dezelfde deelnemers, raderen en uitslag. Kijkers kunnen niets aanpassen. De host kan deelnemers beheren, aantal kiezen, draaien, resetten en de sessie beëindigen. Live deelnemers worden niet naar browseropslag gekopieerd. De knop verschijnt alleen als een geldige publieke API-URL is geconfigureerd.
 
-## Lokaal starten
+De sessie verloopt na acht uur. **Live beëindigen** wist de sessie eerder en laat beide links vervallen. Bewaar je hostlink voor jezelf: iedereen met die link kan de sessie bedienen. Deel alleen de kijklink. Deelbare toegang is geen volledige gebruikersauthenticatie.
 
-Gebruik Node.js 22.12+ (of 20.19+).
+De standaard aantalvoorkeur is 2, minimum 1 en maximum de deelnemerslijst. Bij verkleinen van de lijst wordt het effectieve aantal veilig begrensd. Elke bierhaler krijgt een eigen rad met dezelfde volledige pool. Eén gezamenlijke selectie bepaalt vooraf unieke winnaars. De raderen stoppen kort na elkaar; na de laatste volgt de finale. **Opnieuw draaien** kiest opnieuw uit de volledige pool; **Deelnemers aanpassen** wist alleen de trekking. Bediening is tijdens countdown/draaien vergrendeld.
+
+Namen zijn maximaal 32 tekens, zonder dubbele namen ongeacht hoofdletters. Live sessies bevatten maximaal 100 deelnemers. Eén groot rad, twee/drie naast elkaar bij voldoende breedte, vier in 2×2 en meer in een responsive grid; op mobiel stapelen ze. Fullscreen en reduced motion blijven beschikbaar. Google Fonts is optioneel, met systeemlettertypen als terugval.
+
+## Lokale ontwikkeling
+
+Gebruik Node.js 22.12+ en npm. Voor standalone:
 
 ```sh
-npm install
+npm ci
 npm run dev
 ```
 
+Voor live, kopieer `.env.example` naar `.env.development.local` en start twee terminals:
+
 ```sh
-npm test
-npm run typecheck
-npm run build
-npm run preview
+# Terminal 1: lokale Worker + SQLite Durable Objects, poort 8787
+npm run dev:worker
 ```
 
-## Gebruik
+```sh
+# Terminal 2: Vite, poort 5173
+npm run dev
+```
 
-Voeg minstens één deelnemer toe en kies **Aantal bierhalers** met de min- en plusknop. De standaardvoorkeur is 2; het effectieve aantal ligt tussen 1 en het aantal deelnemers. Als de lijst kleiner wordt, daalt het aantal automatisch mee. Bij een lege lijst blijft de trekking uitgeschakeld.
+`.env.development.local` bevat uitsluitend publieke frontendconfiguratie:
 
-Je expliciete aantalkeuze wordt in localStorage onthouden. De voorkeur blijft bewaard als een kleinere lijst tijdelijk minder winnaars toestaat; bij uitbreiding kan de gekozen voorkeur weer gebruikt worden. Zo levert het één voor één toevoegen van deelnemers standaard twee raderen op zodra er twee mensen meedoen. Namen mogen maximaal 32 tekens bevatten; dubbele namen worden zonder onderscheid tussen hoofdletters geweigerd.
+```dotenv
+VITE_API_URL=http://127.0.0.1:8787
+```
 
-Druk op **DRAAI HET BIERRAD!** om alle raderen tegelijk te starten. Ieder rad bevat dezelfde volledige deelnemerslijst. Alle unieke winnaars worden vooraf gekozen; de animaties tonen vervolgens die uitslag. Tijdens de trekking staan deelnemers- en aantalbediening uit. De raderen stoppen kort na elkaar en onthullen elk hun eigen winnaar. Zodra alle raderen klaar zijn, verschijnt de gezamenlijke finale met confetti.
+Open `http://127.0.0.1:5173/`, start live en open de gekopieerde kijklink in twee andere browsers/vensters. Voeg acht synthetische deelnemers toe, kies drie bierhalers en draai. Ververs een kijker of open de link tijdens de trekking: de actuele voortgang/uitslag verschijnt. Opnieuw verbinden gebeurt automatisch met wachttijden van 1, 2, 4, 8, 16 en maximaal 30 seconden. Een onderbroken verbinding vergrendelt hostbediening tot de serverstand terug is.
 
-**Opnieuw draaien** start direct een geheel nieuwe trekking met hetzelfde aantal en dezelfde deelnemers. Eerdere winnaars kunnen opnieuw winnen; iedere trekking is onafhankelijk. **Deelnemers aanpassen** wist de huidige uitslag en brengt je terug naar de instellingen met de deelnemers intact. Daar kun je ook de lijst wissen.
+De lokale Worker gebruikt `.wrangler/state`; dit is genegeerd door Git en bevat tijdelijke testdata. Gebruik uitsluitend synthetische deelnemers tijdens ontwikkeling. Geen productieverbinding of Cloudflare-login nodig voor lokaal testen. Laat VITE_API_URL weg om zelfstandig gebruik zonder backend te testen.
 
-De laatste niet-lege deelnemerslijst blijft beschikbaar via **Vorige lijst**, ook na **Alles wissen**. Een nieuwe niet-lege lijst vervangt deze opgeslagen lijst. De lijst wordt bij openen automatisch geladen. Bij geblokkeerde browseropslag blijft de app in het huidige venster werken. Er wordt geen trekkinggeschiedenis opgeslagen.
+## Validatie
 
-Eén rad is groot en centraal; meerdere raderen krijgen een responsive grid van maximaal drie kolommen. Vier raderen vormen bij voldoende ruimte een 2×2-opstelling. Op een telefoon stapelen ze onder elkaar. De knop rechtsboven activeert volledig scherm waar de browser dit ondersteunt. Reduced motion wordt gerespecteerd. Google Fonts is optionele aankleding; systeemlettertypen blijven beschikbaar zonder externe verbinding.
+```sh
+npm test                  # frontend/domein + echte workerd-integratietests
+npm run typecheck
+npm run typecheck:worker
+npm run build
+npm run build:worker       # dry-run, publiceert niets
+npm run types:worker       # na wijzigingen aan bindings/configuratie
+```
 
-## GitHub Pages
-
-Repository: https://github.com/TimZegveld/bierrad
-
-Vite gebruikt `base: './'`, zodat gebouwde bestanden ook onder `/bierrad/` werken. De meegeleverde GitHub Actions-workflow test, controleert TypeScript, bouwt bij pushes naar `main`; publiceren is voor deze repository ingeschakeld via GitHub Actions. Kies in **Settings → Pages → Build and deployment → Source** voor **GitHub Actions**. De publieke app staat op [timzegveld.github.io/bierrad](https://timzegveld.github.io/bierrad/). Voor handmatige hosting kun je de inhoud van `dist` als statische website publiceren. Er zijn geen serverroutes nodig.
+Er is geen linter geconfigureerd. `test:frontend` en `test:worker` kunnen apart draaien. Backendtests gebruiken dezelfde Miniflare-versie als Wrangler, via de officiële configuratieadapter. De test-only expiry-subclass wordt uitsluitend aan de in-memory testbundle toegevoegd en zit niet in productie.
 
 ## Architectuur
 
 ```text
 ParticipantSource
        ↓
-SessionController
+SessionController (Local of Remote)
        ↓
-Draw Engine
+Draw Engine (Live: uitsluitend op de server)
        ↓
 DrawInstruction
        ↓
 SpinInstruction[]
        ↓
-Wheel Renderers
+Dezelfde Wheel Renderers op elk scherm
+
+PUBLIEK / ONBETROUWBAAR
+GitHub Pages → React → RemoteSessionController
+                         │ HTTPS / WSS
+                  SECURITY BOUNDARY
+                         ↓
+                   Cloudflare Worker
+                         ↓
+                Durable Object per sessie
+         autorisatie · tijdelijke SQLite-state
+         Draw Engine · snapshots · alarms · expiry
 ```
 
-- **ParticipantSource** levert alleen deelnemers. De bron weet niets over aantal winnaars, raderen of animaties. `ManualParticipantSource` leest lokaal opgeslagen namen en stabiele IDs; Slack blijft een toekomstige bron.
-- **SessionController** biedt stabiele snapshots, subscriptions en asynchrone commando's: `setParticipants`, `setWinnerCount`, `restoreParticipants`, `startDraw` en `reset`. `LocalSessionController` is nu de autoriteit; React is onafhankelijk van de implementatie. Opslag en aantalvoorkeur worden in `main.tsx` aangesloten.
-- **Draw Engine** kiest alle N winnaars als één operatie en bouwt de volledige instructie vóórdat een nieuwe snapshot gepubliceerd wordt. `selectUniqueWinners` gebruikt een gedeeltelijke Fisher–Yates-shuffle met `crypto.getRandomValues()` en rejection sampling, dus zonder modulo-bias. Iedere deelnemer heeft dezelfde inclusiekans en verschijnt maximaal eenmaal. De volledige deelnemerslijst blijft intact.
-- **DrawInstruction** heeft één ID, één UTC-starttijd, de volledige geordende deelnemerspool en N `SpinInstruction`s. Alle spins delen dezelfde starttijd. Elke spin bevat zijn radindex, winnaar, duur, aantal omwentelingen, beginrotatie, eindrotatie en easing. Variatie ligt vooraf vast: zes of zeven omwentelingen en 4,8 tot 5,25 seconden. De lokale trekking krijgt een gezamenlijke aanlooptijd van 100 ms.
-- **Wheel Renderers** spelen uitsluitend de ontvangen instructies af. `WheelGrid` toont één `BeerWheel` per spin en overal dezelfde volledige deelnemerspool. Geen component kiest winnaars of wijzigt animatie-eigenschappen willekeurig. `useBeerWheel` gebruikt `useSyncExternalStore` om React op sessiewijzigingen aan te sluiten.
+- `src/domain` en `src/utils/random.ts`: gedeelde pure domeinlogica. Unbiased Fisher–Yates-sampling zonder teruglegging gebruikt `crypto.getRandomValues()` met rejection sampling. Elke deelnemer heeft dezelfde inclusiekans.
+- `LocalSessionController`: lokale autoriteit en deadlines; alleen hier worden handmatige voorkeuren/opslag aangesloten.
+- `RemoteSessionController`: HTTP-commando's, initiële snapshot, WebSocket, reconnect, klokcorrectie en verbindingstoestand. Geen lokale winnaarselectie of officiële statusovergangen.
+- `shared/protocol.ts`: expliciete publieke DTO en netwerkberichten. Private servermodellen staan uitsluitend onder `worker/`.
+- `worker/index.ts`: exacte Origin-allowlist, begrensde verzoeken, creatielimieten, capability-routing. Geen publieke sessielijst.
+- `worker/live-session.ts`: geautoriseerde HTTP-acties en hibernerende WebSockets, SQLite-opslag, tijdgestuurde voortgang, verwijderen na afloop.
+- `worker/session.ts`: strikte commando-validatie, rechten, veilige DTO, aantallen, selectie, deadlines.
+- `WheelGrid`, `BeerWheel` en `useWheelAnimation`: uitsluitend deterministische weergave. De klokcontext levert alleen een tijdcorrectie en bevat geen netwerklogica.
 
-De deelbare modellen staan in `src/domain/models.ts`. Een `BeerWheelSession` bevat deelnemers, het effectieve `winnerCount`, de onthulde winnaar-IDs en `activeDraw`. Die instructie blijft na afloop beschikbaar, zodat opnieuw gemounte raderen dezelfde eindposities tonen. De toestanden zijn `setup`, `ready`, `countdown`, `spinning` en `finished`. `countdown`, `scheduled` en `scheduledAt` zijn gereserveerd voor de toekomst; er is geen scheduler.
+De sessiestaten zijn `setup`, `ready`, `countdown`, `spinning`, `finished`. Geen speciale eerste/tweede winnaar. Eén DrawInstruction bevat alle spins, geordende volledige deelnemerspool en één starttijd. Elke spin bevat winnaar-ID, radindex, begin/eindrotatie, duur, omwentelingen en easing. Variatie ligt vooraf vast: zes/zeven rondes en 4,8–5,25 seconden.
 
-### Timing, herhalen en rollen
+### Timing en late kijkers
 
-De controller onthult resultaten op hun vastgelegde deadlines en zet de sessie pas op `finished` als alle raderen voltooid zijn. Animatiecallbacks bepalen geen uitslag of sessieovergang. De renderer wacht op toekomstige starttijden, hervat een lopende animatie op de verstreken tijd binnen de oorspronkelijke easingcurve, en toont direct de eindpositie als die tijd voorbij is. Reduced motion slaat de beweging over, maar behoudt de autoritatieve eindtijd.
+Lokaal is de aanloop 100 ms; live kiest de server `startAt = now + 2000 ms`. De controller schat het klokverschil via de servertimestamp en het midden van een HTTP/ping-roundtrip, met voorkeur voor de laagste gemeten latency per verbinding. Alle raderen rekenen met diezelfde correctie. Een lopende animatie wordt op de verstreken tijd in de oorspronkelijke easingcurve hervat; een voltooide instructie toont direct de eindstand.
 
-`startDraw()` werkt vanuit een klaarstaande of voltooide sessie en selecteert altijd opnieuw uit de volledige pool. Voor herhalen sluiten de beginrotaties aan op de vorige eindposities. `reset()` wist instructie en uitslag, behoudt deelnemers en aantal en opent de instellingen weer.
+Alarms bepalen server-side countdown, individuele onthullingen, finale en expiry. Een vertraagde alarmdelivery wordt bij volgende toegang ingehaald. De host hoeft niet verbonden te blijven. Na reconnect komt opnieuw een geautoriseerde volledige snapshot. Revisies verhinderen dat een oud HTTP-antwoord een nieuwere WebSocket-stand overschrijft of dat twee hosts stilzwijgend elkaars edits verliezen. Dit is visuele kantoorsynchronisatie; netwerklatency en achtergrondtab-throttling kunnen zichtbare verschillen geven.
 
-Host- en toeschouwersrechten komen uit één capabilitymodel. De UI verbergt muterende bediening voor spectators; de controller controleert ook zelf ieder commando. Dit is **geen authenticatie**: een toekomstige backend moet rechten zelf afdwingen. De huidige standalone app start als lokale host.
+## API en tijdelijke toegang
 
-### Live Bierrad voorbereiden
+Productie vereist HTTPS/WSS. De frontendlinks gebruiken `#/host/<host>/<spectator>` en `#/live/<spectator>`, zodat statische Pages-routing werkt en de fragmenten niet naar GitHub worden gestuurd. Beide toegangscodes worden alleen bij creatie geretourneerd; de host kan na verversen opnieuw de kijklink kopiëren uit zijn eigen fragment. Er staat nooit een naam in een link.
 
-Een toekomstige server kan één `DrawInstruction` met bijvoorbeeld vijf spins publiceren. Alle clients krijgen dezelfde pool, resultaten, starttijd en animatieparameters. Spectators hoeven geen winnaarselectie uit te voeren. De bestaande radcomponenten kunnen dit al weergeven; alleen de remote adapter en opstartbedrading zijn nieuw werk.
+Een capability bestaat uit een willekeurige 128-bit locator plus een onafhankelijke 256-bit secret. De locator is geen autorisatie of intern sessie-ID. De server bewaart SHA-256-hashes van beide secrets en vergelijkt timing-safe. Geen permanente directory of aparte database/KV-index is nodig.
 
-Dit is **geen volledige live-synchronisatie**. Protocolvalidatie, serverklokcorrectie, reconnects, late-join-snapshots, WebSockets en Cloudflare Durable Objects moeten later worden gebouwd. Ook scheduling, authenticatie en Slack-communicatie zijn niet geïmplementeerd. De lokale app vereist geen backend of configuratie.
+| Operatie | Toegang | Gedrag |
+| --- | --- | --- |
+| `POST /api/sessions` met `{}` | Publiek, Origin + rate limits | Nieuwe sessie en eenmalige credentials |
+| `GET /api/session` | Geldige host of kijker | Veilige snapshot, servertijd en rol |
+| `POST /api/command` | Geldige host | Strikt getypeerd commando met actuele revisie |
+| `GET /api/socket` upgrade | Geldige host of kijker | Snapshotupdates; alleen pingberichten toegestaan |
 
-Tests controleren sampling voor 1 t/m alle deelnemers, ongeldige aantallen, gelijke samplingpaden, gedeelde starttijden, segmentuitlijning, deterministische instructies, staggered onthullingen, capabilities, reset, voorkeuren en onafhankelijke herhalingen. Een spectator-renderingtest speelt een instructie met vijf spins af met random APIs uitgeschakeld. Animaties worden niet frame voor frame getest.
+HTTP gebruikt `Authorization: Bearer <capability>`. Browsers bieden bij WebSocket-upgrade `bierrad, auth.<capability>` als subprotocol aan; de server selecteert alleen `bierrad`. Geen capabilities in backend-URLs of querystrings. Commando's: `setParticipants` (namen, server maakt IDs), `setWinnerCount`, `startDraw`, `reset`, `endSession`. De client kan nooit officiële winnaars/instructies aanleveren. Backendrechten zijn bepalend; frontendcapabilities zijn alleen UX.
 
-## Geplande Slack-integratie
+Ongeldige/verlopen toegang retourneert dezelfde generieke unavailable-respons. Afloop wist namen/uitslag uit de UI, ook met een offline deadline. Bestaande sockets sluiten. De host kan de hele sessie onmiddellijk intrekken door haar te beëindigen.
 
-Slack is zichtbaar als uitgeschakelde toekomstige optie. Er is nog geen Slack-backend of API-communicatie. `SlackParticipantSource`, `SlackThread` en `WinnerPublisher` definiëren de uitbreidingspunten; een toekomstige HTTP-adapter kan dezelfde deelnemersflow voeden.
+Productiebackend: `https://bierrad-live.timzegveld.workers.dev`. De Pages-repositoryvariabele `VITE_API_URL` verwijst naar deze publieke origin.
 
-De backend ontvangt later een Slack-bericht-URL, valideert deze, extraheert kanaal en timestamp, haalt gebruikers met de `:beers:`-reactie op en retourneert hun weergavenamen met stabiele IDs. Na de trekking kan de publisher een antwoord in de originele thread plaatsen:
+## Cloudflare publiceren
 
-```text
-🍻🎡 Het Bierrad heeft gesproken!
-
-De gelukkige winnaars van deze week zijn:
-
-🍺 [Naam van iedere geselecteerde bierhaler, één per regel]
-
-Succes heren/dames. Het volk heeft dorst.
+```sh
+npx wrangler login
+npm run types:worker
+npm test
+npm run typecheck:worker
+npm run build:worker
+npm run deploy:worker
 ```
 
-**Slack-tokens, secrets en credentials mogen nooit in frontendcode of `VITE_*`-variabelen staan.** Deze zijn publiek leesbaar in de browserbundel. Gebruik later een kleine beveiligde backend, bijvoorbeeld een Cloudflare Worker, met server-side secrets, authenticatie, minimale Slack-scopes en gevalideerde verzoeken. GitHub Pages blijft uitsluitend de frontend hosten.
+De top-level `wrangler.jsonc` is productie, `development` alleen lokaal. De eerste deploy maakt de SQLite Durable Object-namespace via migratie `v1`. Er is geen Slack-token, signing secret of andere runtimecredential nodig. Cloudflare-deploycredentials blijven bij Wrangler/secretbeheer en gaan nooit de frontend in. Kies binnen je Cloudflare-account unieke rate-limit namespace-nummers als andere Workers de ingestelde nummers al gebruiken.
 
-### Hosting inschakelen
+Na deploy: zet de repositoryvariabele `VITE_API_URL` op de publieke HTTPS Worker-origin. De bestaande Pages-workflow gebruikt alleen deze publieke variabele. Een push naar `main` valideert frontend én backend en publiceert `dist` als `ENABLE_PAGES=true`. De Worker wordt bewust apart met Wrangler gepubliceerd; Pages CI krijgt geen Cloudflare-credentials. Deploy compatibele backendwijzigingen vóór het frontend.
 
-Deze repository is publiek. Pages gebruikt GitHub Actions en de repositoryvariabele `ENABLE_PAGES` staat op `true`. Iedere push naar `main` doorloopt tests, TypeScript en de productiebuild en publiceert daarna `dist`. Publiceer niet rechtstreeks de bronbestanden via Deploy from a branch. Voor een kopie van dit project: kies GitHub Actions als Pages-bron en voeg `ENABLE_PAGES=true` toe onder Settings → Secrets and variables → Actions → Variables. Tests en builds werken ook zonder hosting.
+Productie staat alleen `https://timzegveld.github.io` als Origin toe. Lokale configuratie staat `http://127.0.0.1:5173` en `http://localhost:5173` toe. Dit is geen authmechanisme: ook met een vervalste Origin blijft een geldige capability vereist. Vite gebruikt `base: './'`, fragmentroutes en een buildspecifieke CSP zodat `/bierrad/` op GitHub Pages blijft werken.
+
+## Beveiliging en beperkingen
+
+[SECURITY.md](SECURITY.md) is bindend. [De implementatiereview](docs/live-security-review.md) beschrijft controles, tests en beperkingen. GitHub, frontend en browser zijn publiek/onbetrouwbaar; credentials en autoriteit horen op de backend. Private API-responses zijn no-store/noindex/no-referrer. De statische frontend gebruikt no-referrer/noindex-meta en een CSP. Pages ondersteunt hier geen HTTP-headerbeleid per fragmentroute. Geen analytics. Nooit headers, body, capability-links of deelnemers loggen; observability staat uit.
+
+Creatie is begrensd tot 5/minuut per IP en 60/minuut per Cloudflare-locatie. Verzoeken/upgrades: 240/minuut per IP. Een sessie heeft maximaal 64 sockets, 60 mutaties/minuut en 6 trekkingen/minuut; sockets alleen 12 korte berichten/minuut. Dit beperkt eenvoudig misbruik, maar is geen globale quota/botpreventie: verspreid misbruik blijft mogelijk en kantoor-IP's delen hun limiet. Sterkere creatie-autorisatie kan later vóór de creatiebranch worden toegevoegd. Controleer kosten en alerts bij bredere inzet.
+
+Tijdelijke toegang is niet hetzelfde als gebruikersauthenticatie. Links kunnen in browsergeschiedenis of het bewust gebruikte klembord staan. Wie een link bezit kan diens rechten gebruiken tot afloop/beëindiging. De server verwijdert applicatiestate; onderliggende providerbackups hebben hun eigen bewaarbeleid. Authorized clients ontvangen de vooraf gekozen winnaars in de instructie en kunnen die technisch vóór de onthulling inspecteren.
+
+## Later
+
+Slack en automatische geplande trekkingen zijn **niet geïmplementeerd**. De bestaande ParticipantSource blijft onafhankelijk van aantal winnaars en animaties. Slack wordt uitsluitend een beveiligde serverbron met sessie-ID's voor de client. Een toekomstige scheduler roept dezelfde server-drawoperatie aan. Er is geen permanente medewerkerhistorie.

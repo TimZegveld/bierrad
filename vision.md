@@ -63,7 +63,7 @@ Animatie, spanning, humor en presentatie zijn belangrijker dan maximale efficië
 
 De selectie moet daadwerkelijk willekeurig zijn.
 
-Alle unieke winnaars worden als één trekking vóór de animaties bepaald met betrouwbare browser-randomness, bijvoorbeeld:
+Alle unieke winnaars worden als één trekking vóór de animaties bepaald met cryptografisch betrouwbare randomness: lokaal in de browser, in Live Mode uitsluitend op de server. Bijvoorbeeld:
 
 ```typescript
 crypto.getRandomValues()
@@ -479,19 +479,19 @@ Het antwoord moet zijn:
 
 # Live Bierrad
 
-**Future vision — not part of the current MVP.**
+**Live Bierrad is beschikbaar naast de zelfstandige lokale modus.**
 
-In een toekomstige versie kunnen collega's op meerdere browsers en de kantoor-tv naar dezelfde live trekking kijken. Alle schermen tonen dezelfde deelnemers, draaien ongeveer gelijktijdig en stoppen bij dezelfde winnaars. Het gezamenlijke vrijdagmoment blijft centraal staan.
+Collega's kunnen op meerdere browsers en de kantoor-tv naar dezelfde live trekking kijken. Alle schermen tonen dezelfde deelnemers, draaien ongeveer gelijktijdig en stoppen bij dezelfde winnaars. Het gezamenlijke vrijdagmoment blijft centraal staan.
 
 ## Host en toeschouwers
 
-Een host beheert de deelnemers, kan ze uit Slack laden, kiest het aantal bierhalers, start alle raderen tegelijk en kan de trekking resetten. Toeschouwers kijken alleen mee. Een toekomstige hostweergave en liveweergave kunnen bijvoorbeeld `/host` en `/live` krijgen. De kantoor-tv is een toeschouwer en hoeft geen bediening te tonen.
+Een host beheert handmatig de deelnemers, kiest het aantal bierhalers, start alle raderen tegelijk en kan de trekking resetten. Slack laden blijft toekomstwerk. Toeschouwers kijken alleen mee. Host en kijkers hebben verschillende tijdelijke links via URL-fragmenten; zonder geldige toegang zijn deelnemers niet zichtbaar. De sessie verloopt na acht uur of wanneer de host haar beëindigt. De kantoor-tv is een toeschouwer en hoeft geen bediening te tonen.
 
 ## Hetzelfde rad, één autoriteit
 
 De server beheert de sessie, selecteert alle unieke winnaars en verstuurt één autoritatieve `DrawInstruction` naar alle schermen. Deze bevat de volledige segmentvolgorde, één gezamenlijke starttijd en meerdere `SpinInstruction`s met per rad een winnaar, duur en rotatie. Een instructie met vijf spins levert op het hostscherm, iedere spectator en de kantoor-tv dezelfde vijf raderen en dezelfde uitslag op. Clients visualiseren de uitslag; ze bepalen in Live Mode nooit zelfstandig een winnaar of volgende sessietoestand.
 
-Een kleine Cloudflare Worker met een Durable Object per sessie en WebSocket-verbindingen is een mogelijke toekomstige invulling. Dit is nog geen infrastructuurkeuze die de lokale versie nodig heeft.
+Een Cloudflare Worker met een Durable Object per sessie beheert livegegevens en WebSocket-verbindingen. De zelfstandige lokale versie werkt zonder backend. De server stuurt een trekking twee seconden voor de start uit; schermen corrigeren hun klok op basis van de server.
 
 ## Geplande vrijdagtrekkingen
 
@@ -501,6 +501,6 @@ Slack blijft de ingang voor deelname via `:beers:` en voor de uitslag. Slack-cre
 
 ## Later aansluiten
 
-Een toeschouwer die tijdens het draaien opent, ontvangt de actuele sessie met de oorspronkelijke starttijd en volledige `DrawInstruction` met alle spins. Het scherm moet op het juiste punt instappen of een al voltooide uitslag tonen, zonder zelf opnieuw te loten. Klokverschillen en herverbindingen vragen later om synchronisatie op basis van de serverklok.
+Een toeschouwer die tijdens het draaien opent, ontvangt de actuele sessie met de oorspronkelijke starttijd en volledige `DrawInstruction` met alle spins. Het scherm moet op het juiste punt instappen of een al voltooide uitslag tonen, zonder zelf opnieuw te loten. De remote controller schat het klokverschil, verbindt opnieuw met oplopende wachttijd en haalt de actuele serverstand op.
 
-De huidige architectuur bereidt hiervoor sessiecontrollers, gedeelde domeinmodellen, capabilities en tijdgestuurde animatie-instructies voor. Multi-user sessies, WebSockets, automatische planning, authenticatie en de Slack-backend vallen buiten de huidige MVP.
+LocalSessionController en RemoteSessionController gebruiken dezelfde radcomponenten. Meerdere kijkers, tijdelijke host-/kijkrechten, WebSockets en herstel na verbindingsverlies zijn geïmplementeerd. Gebruikersaccounts, automatische planning en Slack blijven toekomstwerk. Een deelbare link verleent tijdelijke toegang en is geen volledige gebruikersauthenticatie.

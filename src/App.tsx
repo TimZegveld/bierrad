@@ -1,3 +1,4 @@
+import { PlaybackClock } from "./hooks/PlaybackClock";
 import { useState } from "react";
 import { WheelGrid } from "./components/WheelGrid";
 import { WinnerCountControl } from "./components/WinnerCountControl";
@@ -11,6 +12,8 @@ import { sessionWinners } from "./domain/drawEngine";
 export default function App({ controller }: { controller: SessionController }) {
   const {
     session,
+    live,
+    clockOffsetMs,
     capabilities,
     notice: sessionNotice,
     error,
@@ -19,13 +22,19 @@ export default function App({ controller }: { controller: SessionController }) {
   } = useBeerWheel(controller);
   const [uiNotice, setNotice] = useState("");
   const notice = error || sessionNotice || uiNotice;
-  const spinning = session.state === "spinning";
+  const spinning = ["countdown", "spinning"].includes(session.state);
   const finished = session.state === "finished";
   const start = () => {
     void run(() => controller.startDraw());
   };
   if (!capabilities.canViewSession)
-    return <p>Deze sessie is niet beschikbaar.</p>;
+    return (
+      <div className="unavailable">
+        <h1>🍻 Dit Bierrad is afgelopen.</h1>
+        <p>De link is verlopen of niet beschikbaar.</p>
+        <a href="./">Terug naar je eigen Bierrad</a>
+      </div>
+    );
   return (
     <div className="app">
       <header>
@@ -77,7 +86,9 @@ export default function App({ controller }: { controller: SessionController }) {
                 void run(() => controller.setWinnerCount(count));
               }}
             />
-            <WheelGrid session={session} />
+            <PlaybackClock.Provider value={clockOffsetMs ?? 0}>
+              <WheelGrid session={session} />
+            </PlaybackClock.Provider>
             {finished ? (
               <FinalResult
                 winners={sessionWinners(session)}
@@ -96,9 +107,11 @@ export default function App({ controller }: { controller: SessionController }) {
                     disabled={!capabilities.canStartDraw || pending}
                     onClick={start}
                   >
-                    {spinning
-                      ? "Het lot is in beweging…"
-                      : "🍻 DRAAI HET BIERRAD!"}
+                    {session.state === "countdown"
+                      ? "Iedereen klaar? Daar gaan we…"
+                      : spinning
+                        ? "Het lot is in beweging…"
+                        : "🍻 DRAAI HET BIERRAD!"}
                   </button>
                 )}
                 <p className="helper">
@@ -115,6 +128,7 @@ export default function App({ controller }: { controller: SessionController }) {
           </section>
           <div className="sidebar">
             <ParticipantManager
+              live={!!live}
               people={session.participants}
               locked={!capabilities.canManageParticipants || pending}
               readOnly={!capabilities.canControlSession}

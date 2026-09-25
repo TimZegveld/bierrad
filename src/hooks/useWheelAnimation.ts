@@ -1,8 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useContext } from "react";
 import type { SpinInstruction } from "../domain/models";
 import { getSpinTiming } from "../domain/spin";
+import { PlaybackClock } from "./PlaybackClock";
 /** Playback only: finishing or skipping an animation never changes session state. */
 export function useWheelAnimation(spin?: SpinInstruction) {
+  const offset = useContext(PlaybackClock);
   const ref = useRef<SVGSVGElement>(null);
   useEffect(() => {
     const element = ref.current;
@@ -11,7 +13,7 @@ export function useWheelAnimation(spin?: SpinInstruction) {
       element.style.transform = "rotate(0deg)";
       return;
     }
-    const timing = getSpinTiming(spin, Date.now());
+    const timing = getSpinTiming(spin, Date.now() + offset);
     const reduced = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches;
@@ -45,6 +47,6 @@ export function useWheelAnimation(spin?: SpinInstruction) {
     // Seek along the original easing curve rather than restarting a shortened animation.
     animation.currentTime = timing.elapsedMs;
     return () => animation.cancel();
-  }, [spin]);
+  }, [spin, offset]);
   return ref;
 }

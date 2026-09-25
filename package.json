@@ -7,20 +7,30 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test src/tests/*.test.ts",
-    "preview": "vite preview --host 127.0.0.1"
+    "test": "npm run test:frontend && npm run test:worker",
+    "preview": "vite preview --host 127.0.0.1",
+    "dev:worker": "wrangler dev --env development --port 8787",
+    "typecheck:worker": "tsc -p worker/tsconfig.json",
+    "build:worker": "wrangler deploy --env=\"\" --dry-run --outdir worker-dist",
+    "deploy:worker": "wrangler deploy --env=\"\"",
+    "types:worker": "wrangler types worker/env.d.ts --include-runtime false",
+    "test:worker": "npm run build:worker && tsx --test worker/tests/*.test.ts",
+    "test:frontend": "tsx --test src/tests/*.test.ts"
   },
   "dependencies": {
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260925.1",
+    "@types/node": "^22.0.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "miniflare": "5.20260923.0-alpha",
+    "tsx": "^4.20.0",
     "typescript": "~5.9.2",
     "vite": "^7.1.0",
-    "tsx": "^4.20.0",
-    "@types/node": "^22.0.0"
+    "wrangler": "^4.140.0"
   }
 }

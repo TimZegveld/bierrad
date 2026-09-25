@@ -729,3 +729,11 @@ footer b {
     display: none;
   }
 }
+
+.live-bar { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:12px; padding:12px 20px; background:#f2ecdD; font-size:14px; }
+.live-bar button { border:1px solid #d4c7a7; border-radius:20px; padding:8px 14px; background:#fff8e9; }
+.live-bar small { color:#596f60; }
+.live-bar p { flex-basis:100%; text-align:center; margin:0; }
+.live-bar a { text-decoration:underline; }
+.unavailable { max-width:700px; margin:15vh auto; padding:24px; text-align:center; }
+.unavailable a { text-decoration:underline; }

@@ -3,8 +3,10 @@ export function FinalResult({
   winners,
   onReset,
   onNew,
+  canReset,
 }: {
-  winners: Participant[];
+  winners: readonly Participant[];
+  canReset: boolean;
   onReset: () => void;
   onNew: () => void;
 }) {
@@ -20,15 +22,19 @@ export function FinalResult({
       </p>
       <h3>Jullie mogen bier halen!</h3>
       <p>Het volk heeft dorst. Maak ons trots.</p>
-      <button className="primary" onClick={onReset}>
-        Opnieuw met dezelfde deelnemers
-      </button>
-      <button className="text-button" onClick={onNew}>
-        Nieuw bierrad
-      </button>
-      <button className="slack-future" disabled>
-        Plaats winnaars in Slack · Binnenkort
-      </button>
+      {canReset && (
+        <>
+          <button className="primary" onClick={onReset}>
+            Opnieuw met dezelfde deelnemers
+          </button>
+          <button className="text-button" onClick={onNew}>
+            Nieuw bierrad
+          </button>
+          <button className="slack-future" disabled>
+            Plaats winnaars in Slack · Binnenkort
+          </button>
+        </>
+      )}
     </section>
   );
 }

@@ -38,15 +38,35 @@ Vite gebruikt `base: './'`, zodat gebouwde bestanden ook onder `/bierrad/` werke
 
 ## Architectuur
 
-- `components/`: SVG-rad, deelnemersbeheer, onthullingen en confetti.
-- `hooks/useBeerWheel.ts`: React-koppeling met de expliciete toestanden setup, ready, spinning-first, first-winner, spinning-second en finished.
-- `utils/draw.ts`: zuivere toestandsovergangen, originele deelnemerssnapshot en reset.
-- `utils/random.ts`: cryptografische selectie en berekening van de eindrotatie.
-- `hooks/useWheelAnimation.ts`: Web Animations API met versnelling, meerdere omwentelingen en vertraging. Annuleert bij unmount en ondersteunt reduced motion.
-- `services/ManualParticipantSource.ts`: validatie en lokale opslag achter de asynchrone `ParticipantSource`-interface.
-- `tests/`: belangrijke gedragsregels, opslagvalidatie en geometrische uitlijning, los van animaties getest met de Node-testrunner.
+```text
+ParticipantSource → SessionController → Draw Engine → SpinInstruction → Wheel Renderer
+```
 
-De winnaar wordt **vóór** de animatie bepaald met `crypto.getRandomValues()`. Rejection sampling voorkomt modulo-bias. Daarna wordt de rotatie berekend zodat het midden van het gekozen segment exact onder de vaste aanwijzer stopt. Animatietiming heeft geen invloed op de uitslag. De tweede trekking sluit het ID van de eerste winnaar uit. Alle deelnemers hebben per trekking gelijke kansen. Een lokaal beheerder kan deze clientapp aanpassen; hij is bedoeld voor informele kantoorlotingen.
+- **ParticipantSource** levert deelnemers. `ManualParticipantSource` leest localStorage en bewaart bestaande IDs. Een toekomstige Slack-bron kan dezelfde interface gebruiken.
+- **SessionController** is de grens voor React: een stabiele snapshot, een abonnement op updates en asynchrone commando's voor deelnemers, draaien en resetten. `LocalSessionController` is nu de autoriteit. Hij laadt de bron, kiest winnaars, maakt instructies en voltooit de trekking op zijn eigen klok. Ook zonder gemount rad gaat de sessie door. Opslag wordt via een callback aangesloten; de controller kent geen localStorage.
+- **Draw Engine** (`src/domain/drawEngine.ts`) bevat zuivere toestandsovergangen en controles. De oorspronkelijke deelnemerslijst blijft behouden; getrokken IDs en de segmentvolgorde van de laatste draai bepalen de getoonde lijst. Reset herstelt iedereen.
+- **SpinInstruction** bevat een unieke ID, ronde, geordende deelnemers-IDs, winnaar-ID, UTC-starttijd, duur, beginrotatie, eindrotatie en easing. Vanaf dat moment liggen de animatie en de uitslag vast.
+- **Wheel Renderer** (`BeerWheel` en `useWheelAnimation`) speelt uitsluitend die instructie af. Hij trekt geen winnaar, berekent geen willekeurige rotatie en kan geen sessieovergang uitvoeren. `useBeerWheel` koppelt React via `useSyncExternalStore` aan iedere implementatie van de controller-interface.
+
+De deelbare modellen staan in `src/domain/models.ts`, zonder React- of backenddependencies. Een `BeerWheelSession` bevat één oorspronkelijke deelnemerslijst, winnaar-IDs en de laatste instructie. Die instructie blijft na afloop beschikbaar zodat een opnieuw gemount rad dezelfde positie toont. `countdown`, `scheduled` en `scheduledAt` zijn uitsluitend gereserveerde domeinbegrippen; er is geen scheduler.
+
+De winnaar wordt **vóór** de animatie bepaald met `crypto.getRandomValues()`. Rejection sampling voorkomt modulo-bias. De engine berekent daarna een rotatie met zes volledige omwentelingen plus uitlijning van het geselecteerde segment onder de pointer. De tweede trekking sluit de eerste winnaar uit. De lokale controller bepaalt de onthulling op `startAt + durationMs`; animatietiming heeft geen invloed op de uitslag.
+
+### Tijd en rollen
+
+De renderer wacht op een toekomstige `startAt`. Bij een al lopende instructie zet hij de Web Animation op de verstreken tijd binnen de oorspronkelijke easingcurve. Na de eindtijd toont hij direct de eindpositie. Dit is lokale afspeelondersteuning, **geen volledige late-join-synchronisatie**: netwerkherverbindingen, klokverschillen, verouderde events en sessieherstel moeten later door een remote adapter worden afgehandeld. Bij reduced motion blijft het rad stil en springt het op de gedeelde eindtijd naar de winnaar; de autoritatieve timing verandert niet.
+
+Host- en toeschouwersrechten komen uit één capabilitymodel (`src/domain/capabilities.ts`). De UI verbergt muterende bediening voor toeschouwers. De lokale controller controleert de rechten bovendien bij ieder commando. Dit is een programmeergrens, **geen authenticatie of beveiliging tegen een aangepaste client**; een toekomstige server moet rechten zelf afdwingen. De huidige app start altijd als lokale host en heeft geen `/host`- of `/live`-routes.
+
+### Later een RemoteSessionController toevoegen
+
+De compositie staat in `src/main.tsx`. Daar kan later een remote controller worden aangesloten in plaats van de lokale controller en opslagbron. De remote implementatie verstuurt hostcommando's, ontvangt server-snapshots en publiceert deze via dezelfde interface. Spectators hebben daarbij geen lokale winnaarselectie nodig. De server wordt dan verantwoordelijk voor toeval, timing, toestanden en permissies; clients mogen geen trekking voltooien.
+
+**Architectuurreview:** bestaande bestanden met grote wijzigingen bij toekomstige WebSockets: geen van de rad- of kern-Reactcomponenten. Alleen de opstartbedrading in `main.tsx` verandert; de remote adapter, protocolvalidatie, klokcorrectie en backend zijn nieuw werk. De gedeelde modellen kunnen later naar een gedeeld pakket verhuizen. `App`, `useBeerWheel`, `BeerWheel` en de lokale controller kunnen hun huidige verantwoordelijkheid behouden.
+
+Dit bereidt Slack-deelnemers, WebSockets, Cloudflare Durable Objects, spectators en geplande trekkingen voor. **Geen van die integraties is nu geïmplementeerd.** Er zijn geen extra dependencies, servercode, authenticatie, cronjobs of database toegevoegd. De volledige lokale flow werkt zonder Cloudflare of Slack.
+
+Tests controleren deelnemersbeheer, willekeurige selectie, controllercommando's, klokgestuurde afronding, uitsluiting van eerdere winnaars, deterministische instructies, rollen, subscriptions, opslagfouten en reset. Een React-renderingtest gebruikt bovendien een andere controllerimplementatie met vaste snapshots. Animaties worden niet frame voor frame getest.
 
 ## Geplande Slack-integratie
 

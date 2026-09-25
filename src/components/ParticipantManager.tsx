@@ -5,11 +5,13 @@ import { colors } from "./BeerWheel";
 export function ParticipantManager({
   people,
   locked,
+  readOnly,
   onChange,
   onRestore,
 }: {
-  people: Participant[];
+  people: readonly Participant[];
   locked: boolean;
+  readOnly: boolean;
   onChange: (p: Participant[]) => void;
   onRestore: () => void;
 }) {
@@ -25,41 +27,45 @@ export function ParticipantManager({
         </div>
         <span className="count">{people.length}</span>
       </div>
-      <div className="source-tabs">
-        <span>✎ &nbsp; Handmatig</span>
-        <button disabled title="Binnenkort via een beveiligde backend">
-          Slack 🍻 <small>Binnenkort</small>
-        </button>
-      </div>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          try {
-            onChange(addParticipant(people, name));
-            setName("");
-            setError("");
-          } catch (e) {
-            setError((e as Error).message);
-          }
-        }}
-      >
-        <label htmlFor="participant">Naam van je collega</label>
-        <div className="name-input">
-          <input
-            id="participant"
-            value={name}
-            maxLength={32}
-            disabled={locked}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Bijv. Robin"
-            autoComplete="off"
-            aria-describedby={error ? "name-error" : undefined}
-          />
-          <button disabled={locked} aria-label="Deelnemer toevoegen">
-            +
-          </button>
-        </div>
-      </form>
+      {!readOnly && (
+        <>
+          <div className="source-tabs">
+            <span>✎ &nbsp; Handmatig</span>
+            <button disabled title="Binnenkort via een beveiligde backend">
+              Slack 🍻 <small>Binnenkort</small>
+            </button>
+          </div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              try {
+                onChange(addParticipant(people, name));
+                setName("");
+                setError("");
+              } catch (e) {
+                setError((e as Error).message);
+              }
+            }}
+          >
+            <label htmlFor="participant">Naam van je collega</label>
+            <div className="name-input">
+              <input
+                id="participant"
+                value={name}
+                maxLength={32}
+                disabled={locked}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Bijv. Robin"
+                autoComplete="off"
+                aria-describedby={error ? "name-error" : undefined}
+              />
+              <button disabled={locked} aria-label="Deelnemer toevoegen">
+                +
+              </button>
+            </div>
+          </form>
+        </>
+      )}
       {error && (
         <p className="error" id="name-error" role="alert">
           {error}
@@ -75,13 +81,15 @@ export function ParticipantManager({
               {p.name.slice(0, 1).toUpperCase()}
             </span>
             <span>{p.name}</span>
-            <button
-              aria-label={`${p.name} verwijderen`}
-              disabled={locked}
-              onClick={() => onChange(removeParticipant(people, p.id))}
-            >
-              ×
-            </button>
+            {!readOnly && (
+              <button
+                aria-label={`${p.name} verwijderen`}
+                disabled={locked}
+                onClick={() => onChange(removeParticipant(people, p.id))}
+              >
+                ×
+              </button>
+            )}
           </li>
         ))}
       </ul>
@@ -92,35 +100,39 @@ export function ParticipantManager({
           Voeg minstens twee collega's toe.
         </p>
       )}
-      <div className="list-actions">
-        <button
-          disabled={locked || !people.length}
-          onClick={() => setConfirm(true)}
-        >
-          Alles wissen
-        </button>
-        <button disabled={locked} onClick={onRestore}>
-          ↶ Vorige lijst
-        </button>
-      </div>
-      {confirm && (
-        <div className="confirm">
-          <p>Alle deelnemers van het rad halen?</p>
-          <button
-            disabled={locked}
-            onClick={() => {
-              onChange([]);
-              setConfirm(false);
-            }}
-          >
-            Ja, wis de lijst
-          </button>
-          <button onClick={() => setConfirm(false)}>Annuleren</button>
-        </div>
+      {!readOnly && (
+        <>
+          <div className="list-actions">
+            <button
+              disabled={locked || !people.length}
+              onClick={() => setConfirm(true)}
+            >
+              Alles wissen
+            </button>
+            <button disabled={locked} onClick={onRestore}>
+              ↶ Vorige lijst
+            </button>
+          </div>
+          {confirm && (
+            <div className="confirm">
+              <p>Alle deelnemers van het rad halen?</p>
+              <button
+                disabled={locked}
+                onClick={() => {
+                  onChange([]);
+                  setConfirm(false);
+                }}
+              >
+                Ja, wis de lijst
+              </button>
+              <button onClick={() => setConfirm(false)}>Annuleren</button>
+            </div>
+          )}
+          <p className="storage-note">
+            ▣ &nbsp; Je lijst wordt op dit apparaat bewaard.
+          </p>
+        </>
       )}
-      <p className="storage-note">
-        ▣ &nbsp; Je lijst wordt op dit apparaat bewaard.
-      </p>
     </aside>
   );
 }

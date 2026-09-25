@@ -491,3 +491,33 @@ moet het antwoord uiteindelijk niet zijn:
 Het antwoord moet zijn:
 
 > **"Zet het Bierrad aan." 🍻🎡**
+
+---
+
+# Live Bierrad
+
+**Future vision — not part of the current MVP.**
+
+In een toekomstige versie kunnen collega's op meerdere browsers en de kantoor-tv naar dezelfde live trekking kijken. Alle schermen tonen dezelfde deelnemers, draaien ongeveer gelijktijdig en stoppen bij dezelfde winnaars. Het gezamenlijke vrijdagmoment blijft centraal staan.
+
+## Host en toeschouwers
+
+Een host beheert de deelnemers, kan ze uit Slack laden, start beide rondes en kan de trekking resetten. Toeschouwers kijken alleen mee. Een toekomstige hostweergave en liveweergave kunnen bijvoorbeeld `/host` en `/live` krijgen. De kantoor-tv is een toeschouwer en hoeft geen bediening te tonen.
+
+## Hetzelfde rad, één autoriteit
+
+De server beheert de sessie, selecteert de winnaars en verstuurt dezelfde deterministische draai-instructie naar alle schermen: segmentvolgorde, winnaar, starttijd, duur en rotatie. Clients visualiseren de uitslag; ze bepalen in Live Mode nooit zelfstandig een winnaar of volgende sessietoestand.
+
+Een kleine Cloudflare Worker met een Durable Object per sessie en WebSocket-verbindingen is een mogelijke toekomstige invulling. Dit is nog geen infrastructuurkeuze die de lokale versie nodig heeft.
+
+## Geplande vrijdagtrekkingen
+
+Naast hostbediening kan later een automatische trekking bestaan, bijvoorbeeld op vrijdag om 15:30. De deelnemers zijn vooraf geladen, alle schermen tonen een countdown, de eerste draai start automatisch, de winnaar krijgt een kort moment en daarna volgt de tweede draai. Tot slot verschijnen beide namen en kan de uitslag in de oorspronkelijke Slack-thread worden geplaatst.
+
+Slack blijft de ingang voor deelname via `:beers:` en voor de uitslag. Slack-credentials blijven uitsluitend op de backend. Handmatige lokale deelname blijft altijd mogelijk.
+
+## Later aansluiten
+
+Een toeschouwer die tijdens het draaien opent, ontvangt de actuele sessie met de oorspronkelijke starttijd en volledige draai-instructie. Het scherm moet op het juiste punt instappen of een al voltooide uitslag tonen, zonder zelf opnieuw te loten. Klokverschillen en herverbindingen vragen later om synchronisatie op basis van de serverklok.
+
+De huidige architectuur bereidt hiervoor sessiecontrollers, gedeelde domeinmodellen, capabilities en tijdgestuurde animatie-instructies voor. Multi-user sessies, WebSockets, automatische planning, authenticatie en de Slack-backend vallen buiten de huidige MVP.

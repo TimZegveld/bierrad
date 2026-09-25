@@ -1,25 +1,28 @@
-import { useState } from "react";
-import type { Participant } from "../types";
-import { createDraw, startSpin, finishSpin, resetDraw } from "../utils/draw";
-import { pickWinner } from "../utils/random";
-export function useBeerWheel() {
-  const [draw, setDraw] = useState(() => createDraw([]));
-  return {
-    draw,
-    setParticipants: (people: Participant[]) => setDraw(createDraw(people)),
-    spin: () =>
-      setDraw((d) =>
-        ["ready", "first-winner"].includes(d.state)
-          ? startSpin(
-              d,
-              pickWinner(
-                d.original,
-                d.winners.map((w) => w.id),
-              ),
-            )
-          : d,
-      ),
-    finish: () => setDraw(finishSpin),
-    reset: () => setDraw(resetDraw),
-  };
+import { useState, useSyncExternalStore } from "react";
+import type { SessionController } from "../sessions/SessionController";
+/** UI adapter only: no source, local storage, clocks, or winner selection. */
+export function useBeerWheel(controller: SessionController) {
+  const snapshot = useSyncExternalStore(
+    controller.subscribe,
+    controller.getSnapshot,
+    controller.getSnapshot,
+  );
+  const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
+  async function run(command: () => Promise<void>) {
+    setPending(true);
+    setError("");
+    try {
+      await command();
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Deze actie is niet gelukt. Probeer opnieuw.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+  return { ...snapshot, pending, error, run };
 }

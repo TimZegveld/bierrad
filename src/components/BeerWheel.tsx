@@ -1,4 +1,4 @@
-import type { Participant } from "../types";
+import type { Participant, SpinInstruction } from "../domain/models";
 import { useWheelAnimation } from "../hooks/useWheelAnimation";
 export const colors = [
   "#f8bd37",
@@ -12,21 +12,14 @@ export const colors = [
 ];
 export function BeerWheel({
   people,
-  pending,
+  spin,
   spinning,
-  onFinish,
 }: {
-  people: Participant[];
-  pending?: Participant;
+  people: readonly Participant[];
+  spin?: SpinInstruction;
   spinning: boolean;
-  onFinish: () => void;
 }) {
-  const ref = useWheelAnimation(
-    pending ? people.findIndex((p) => p.id === pending.id) : undefined,
-    people.length,
-    pending?.id,
-    onFinish,
-  );
+  const ref = useWheelAnimation(spin);
   const displayed = people.length
     ? people
     : Array.from({ length: 8 }, (_, i) => ({ id: String(i), name: "" }));

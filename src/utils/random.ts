@@ -10,17 +10,9 @@ export function randomIndex(length: number): number {
   return buffer[0] % length;
 }
 export function pickWinner(
-  participants: Participant[],
+  participants: readonly Participant[],
   excludedIds: string[] = [],
 ): Participant {
   const eligible = participants.filter((p) => !excludedIds.includes(p.id));
   return eligible[randomIndex(eligible.length)];
-}
-export function landingRotation(
-  current: number,
-  index: number,
-  count: number,
-): number {
-  const target = (360 - ((index + 0.5) * 360) / count) % 360;
-  return current + 360 * 6 + ((target - (current % 360) + 360) % 360);
 }

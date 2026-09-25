@@ -1,39 +1,50 @@
 import { useEffect, useRef } from "react";
-import { landingRotation } from "../utils/random";
-export function useWheelAnimation(
-  index: number | undefined,
-  count: number,
-  spinKey: string | undefined,
-  onFinish: () => void,
-) {
+import type { SpinInstruction } from "../domain/models";
+import { getSpinTiming } from "../domain/spin";
+/** Playback only: finishing or skipping an animation never changes session state. */
+export function useWheelAnimation(spin?: SpinInstruction) {
   const ref = useRef<SVGSVGElement>(null);
-  const rotation = useRef(0);
-  const finish = useRef(onFinish);
-  finish.current = onFinish;
   useEffect(() => {
-    if (index === undefined || !spinKey || !ref.current) return;
-    const target = landingRotation(rotation.current, index, count);
+    const element = ref.current;
+    if (!element) return;
+    if (!spin) {
+      element.style.transform = "rotate(0deg)";
+      return;
+    }
+    const timing = getSpinTiming(spin, Date.now());
     const reduced = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches;
-    const animation = ref.current.animate(
+    if (timing.finished) {
+      element.style.transform = `rotate(${spin.targetRotation}deg)`;
+      return;
+    }
+    if (reduced) {
+      element.style.transform = `rotate(${spin.startRotation}deg)`;
+      const timer = window.setTimeout(
+        () => {
+          element.style.transform = `rotate(${spin.targetRotation}deg)`;
+        },
+        timing.delayMs + spin.durationMs - timing.elapsedMs,
+      );
+      return () => window.clearTimeout(timer);
+    }
+    element.style.transform = `rotate(${spin.targetRotation}deg)`;
+    const animation = element.animate(
       [
-        { transform: `rotate(${rotation.current}deg)` },
-        { transform: `rotate(${target}deg)` },
+        { transform: `rotate(${spin.startRotation}deg)` },
+        { transform: `rotate(${spin.targetRotation}deg)` },
       ],
       {
-        duration: reduced ? 120 : 4800,
-        easing: "cubic-bezier(.35,0,.12,1)",
-        fill: "forwards",
+        duration: spin.durationMs,
+        delay: timing.delayMs,
+        easing: spin.easing,
+        fill: "both",
       },
     );
-    animation.onfinish = () => {
-      rotation.current = target;
-      if (ref.current) ref.current.style.transform = `rotate(${target}deg)`;
-      animation.cancel();
-      finish.current();
-    };
+    // Seek along the original easing curve rather than restarting a shortened animation.
+    animation.currentTime = timing.elapsedMs;
     return () => animation.cancel();
-  }, [index, count, spinKey]);
+  }, [spin]);
   return ref;
 }

@@ -1,7 +1,7 @@
 import type { BeerWheelSession, DrawInstruction, Participant } from "./models";
 import { landingRotation } from "./spin";
 import { validateParticipants } from "../utils/participants";
-import { selectUniqueWinners } from "../utils/random";
+import { selectRiggedWinners, type DrawRig } from "../utils/random";
 
 export function constrainWinnerCount(
   desired: number,
@@ -44,6 +44,7 @@ export function sessionWinners(
 export function startDraw(
   session: BeerWheelSession,
   timing: Pick<DrawInstruction, "id" | "startAt">,
+  rig?: DrawRig,
 ): BeerWheelSession {
   if (
     session.mode !== "manual" ||
@@ -52,9 +53,10 @@ export function startDraw(
     throw new Error("Het rad is niet klaar.");
   if (!timing.id || !Number.isFinite(Date.parse(timing.startAt)))
     throw new Error("Ongeldige animatietiming.");
-  const winners = selectUniqueWinners(
+  const winners = selectRiggedWinners(
     session.participants,
     session.winnerCount,
+    rig,
   );
   const participantIds = session.participants.map((p) => p.id);
   const spins = winners.map((winner, wheelIndex) => {

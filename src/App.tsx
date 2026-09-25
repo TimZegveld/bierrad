@@ -1,11 +1,13 @@
 import { SlackControls, SlackResultStatus } from "./components/SlackControls";
 import { PlaybackClock } from "./hooks/PlaybackClock";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { WheelGrid } from "./components/WheelGrid";
 import { WinnerCountControl } from "./components/WinnerCountControl";
 import { ParticipantManager } from "./components/ParticipantManager";
 import { FinalResult } from "./components/FinalResult";
 import { Confetti } from "./components/Confetti";
+import { SecretPanel } from "./components/SecretPanel";
+import { loadWeights, saveWeights } from "./services/RigPreference";
 import { useBeerWheel } from "./hooks/useBeerWheel";
 import type { SessionController } from "./sessions/SessionController";
 import { sessionWinners } from "./domain/drawEngine";
@@ -22,6 +24,10 @@ export default function App({ controller }: { controller: SessionController }) {
     run,
   } = useBeerWheel(controller);
   const [uiNotice, setNotice] = useState("");
+  const [secretOpen, setSecretOpen] = useState(false);
+  const [weights, setWeights] = useState(loadWeights);
+  const [forcedIds, setForcedIds] = useState<string[]>([]);
+  const closeSecret = useCallback(() => setSecretOpen(false), []);
   const notice = error || sessionNotice || uiNotice;
   const slackBusy = !!live?.slack?.importing;
   const slackPosting =
@@ -29,8 +35,13 @@ export default function App({ controller }: { controller: SessionController }) {
     ["pending", "posting"].includes(live.slack.result.status);
   const spinning = ["countdown", "spinning"].includes(session.state);
   const finished = session.state === "finished";
+  // Live draws are chosen by the server, so the secret panel is local-only.
+  const canRig = !live && capabilities.canControlSession;
   const start = () => {
-    void run(() => controller.startDraw());
+    void run(async () => {
+      await controller.startDraw(canRig ? { weights, forcedIds } : undefined);
+      setForcedIds([]);
+    });
   };
   if (!capabilities.canViewSession)
     return (
@@ -70,7 +81,13 @@ export default function App({ controller }: { controller: SessionController }) {
       <main>
         <div className="intro">
           <span className="eyebrow">GEEN DISCUSSIE. GEWOON DRAAIEN.</span>
-          <h1>🍻 Bierrad 🎡</h1>
+          <h1
+            onClick={(event) => {
+              if (canRig && event.detail === 3) setSecretOpen(true);
+            }}
+          >
+            🍻 Bierrad 🎡
+          </h1>
           <p>Wie haalt deze week het bier?</p>
         </div>
         {notice && (
@@ -199,6 +216,26 @@ export default function App({ controller }: { controller: SessionController }) {
         </span>
       </footer>
       {finished && <Confetti key={session.activeDraw?.id} />}
+      {secretOpen && canRig && (
+        <SecretPanel
+          people={session.participants}
+          weights={weights}
+          forcedIds={forcedIds}
+          onWeight={(id, weight) => {
+            const next = { ...weights };
+            if (weight === 1) delete next[id];
+            else next[id] = weight;
+            setWeights(next);
+            saveWeights(next);
+          }}
+          onForced={(id, forced) =>
+            setForcedIds((ids) =>
+              forced ? [...ids, id] : ids.filter((other) => other !== id),
+            )
+          }
+          onClose={closeSecret}
+        />
+      )}
     </div>
   );
 }

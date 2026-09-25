@@ -28,7 +28,8 @@ export interface SessionController {
   setParticipants(participants: readonly Participant[]): Promise<void>;
   restoreParticipants(): Promise<void>;
   setWinnerCount(count: number): Promise<void>;
-  startDraw(): Promise<void>;
+  /** Remote sessions ignore the rig: the server alone picks winners. */
+  startDraw(rig?: import("../utils/random").DrawRig): Promise<void>;
   reset(): Promise<void>;
   importSlack?(permalink?: string): Promise<void>;
   useManualSource?(): Promise<void>;

@@ -62,3 +62,7 @@ Succes heren/dames. Het volk heeft dorst.
 ```
 
 **Slack-tokens, secrets en credentials mogen nooit in frontendcode of `VITE_*`-variabelen staan.** Deze zijn publiek leesbaar in de browserbundel. Gebruik later een kleine beveiligde backend, bijvoorbeeld een Cloudflare Worker, met server-side secrets, authenticatie, minimale Slack-scopes en gevalideerde verzoeken. GitHub Pages blijft uitsluitend de frontend hosten.
+
+### Hosting inschakelen
+
+Deployment staat standaard uit. Voeg na het instellen van GitHub Pages de repositoryvariabele ENABLE_PAGES met waarde true toe onder Settings → Secrets and variables → Actions → Variables. Start daarna de workflow opnieuw. Controleer voor deze privérepository of Pages beschikbaar is binnen je GitHub-abonnement. Tests en builds werken ook zonder hosting.

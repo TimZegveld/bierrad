@@ -815,3 +815,82 @@ footer b {
   font: inherit;
   cursor: pointer;
 }
+.secret-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(48 46 38 / 42%);
+}
+.secret-panel {
+  width: min(480px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 24px;
+  border-radius: 22px;
+  background: #fffaec;
+  box-shadow: 0 24px 60px rgb(48 46 38 / 28%);
+}
+.secret-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.secret-heading h2 {
+  margin: 0;
+  font: 800 20px Outfit, sans-serif;
+}
+.secret-heading button {
+  border: 0;
+  background: none;
+  font-size: 26px;
+  line-height: 1;
+  color: #8a8472;
+}
+.secret-panel > p {
+  margin: 8px 0 16px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #6f6a5b;
+}
+.secret-panel ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.secret-panel li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: #fff;
+}
+.secret-panel li > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.secret-panel label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.secret-panel input[type="number"] {
+  width: 56px;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+.secret-panel input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}

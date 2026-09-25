@@ -11,6 +11,7 @@ import {
   startDraw,
 } from "../domain/drawEngine";
 import { getCapabilities } from "../domain/capabilities";
+import type { DrawRig } from "../utils/random";
 import type { ParticipantSource } from "../services/ParticipantSource";
 import type { WinnerCountPreference } from "../services/WinnerCountPreference";
 import type { SessionController, SessionSnapshot } from "./SessionController";
@@ -172,13 +173,13 @@ export class LocalSessionController implements SessionController {
       notice,
     );
   }
-  async startDraw(): Promise<void> {
+  async startDraw(rig?: DrawRig): Promise<void> {
     this.require("canStartDraw");
     // A short shared lead-in lets all mounted wheels pick up the same timestamp.
     const session = startDraw(this.snapshot.session, {
       id: crypto.randomUUID(),
       startAt: new Date(this.clock.now() + 100).toISOString(),
-    });
+    }, rig);
     this.cancelTick?.();
     this.publish(session);
     this.scheduleNextReveal(session.activeDraw!.id);

@@ -27,3 +27,46 @@ export function selectUniqueWinners(
   }
   return shuffled.slice(0, count);
 }
+/** Secret-panel settings: relative odds per participant and forced winners for one draw. */
+export interface DrawRig {
+  readonly weights?: Readonly<Record<string, number>>;
+  readonly forcedIds?: readonly string[];
+}
+function randomFraction(): number {
+  return randomIndex(0x100000000) / 0x100000000;
+}
+/** Forced winners first (random subset if too many), then weighted picks without replacement; wheel order is shuffled. */
+export function selectRiggedWinners(
+  participants: readonly Participant[],
+  count: number,
+  rig: DrawRig = {},
+): Participant[] {
+  const forcedIds = new Set(rig.forcedIds ?? []);
+  const forced = participants.filter((p) => forcedIds.has(p.id));
+  const weight = (p: Participant) => {
+    const value = rig.weights?.[p.id] ?? 1;
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  };
+  const rest = participants.filter((p) => !forcedIds.has(p.id));
+  if (!forced.length && rest.every((p) => weight(p) === 1))
+    return selectUniqueWinners(participants, count);
+  // Validates count and IDs with the regular rules.
+  selectUniqueWinners(participants, count);
+  const winners = forced.length
+    ? selectUniqueWinners(forced, Math.min(count, forced.length))
+    : [];
+  const pool = [...rest];
+  while (winners.length < count) {
+    const total = pool.reduce((sum, p) => sum + weight(p), 0);
+    let index = randomIndex(pool.length);
+    if (total > 0) {
+      let target = randomFraction() * total;
+      index = pool.findIndex((p) => (target -= weight(p)) < 0);
+      // Floating-point leftovers fall to the last participant with odds.
+      if (index < 0)
+        index = pool.length - 1 - [...pool].reverse().findIndex((p) => weight(p) > 0);
+    }
+    winners.push(...pool.splice(index, 1));
+  }
+  return selectUniqueWinners(winners, winners.length);
+}

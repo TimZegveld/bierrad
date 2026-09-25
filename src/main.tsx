@@ -3,12 +3,14 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { LocalSessionController } from "./sessions/LocalSessionController";
 import { ManualParticipantSource } from "./services/ManualParticipantSource";
+import { LocalWinnerCountPreference } from "./services/WinnerCountPreference";
 import "./styles.css";
 
 // Composition root: future remote sessions replace this wiring, not the React views.
 const source = new ManualParticipantSource();
 const controller = new LocalSessionController({
   source,
+  preference: new LocalWinnerCountPreference(),
   saveParticipants: (people) => source.save(people),
 });
 void controller.initialize();

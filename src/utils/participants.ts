@@ -1,4 +1,4 @@
-import type { Participant } from "../types";
+import type { Participant } from "../domain/models";
 export function addParticipant(
   list: readonly Participant[],
   input: string,

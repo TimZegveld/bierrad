@@ -9,16 +9,17 @@ export function getCapabilities(
   busy = false,
 ): SessionCapabilities {
   const control = role === "host" && !busy && session.mode === "manual";
+  const setup = ["setup", "ready"].includes(session.state);
   return {
     canViewSession: true,
     canControlSession: role === "host",
-    canManageParticipants:
-      control && ["setup", "ready"].includes(session.state),
-    canStartSpin: control && ["ready", "first-winner"].includes(session.state),
-    canReset:
+    canManageParticipants: control && setup,
+    canConfigureDraw: control && setup && session.participants.length > 0,
+    canStartDraw:
       control &&
-      !["countdown", "spinning-first", "spinning-second"].includes(
-        session.state,
-      ),
+      ["ready", "finished"].includes(session.state) &&
+      session.winnerCount >= 1 &&
+      session.winnerCount <= session.participants.length,
+    canReset: control && ["setup", "ready", "finished"].includes(session.state),
   };
 }

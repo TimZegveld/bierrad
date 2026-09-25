@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { BeerWheel } from "./components/BeerWheel";
+import { WheelGrid } from "./components/WheelGrid";
+import { WinnerCountControl } from "./components/WinnerCountControl";
 import { ParticipantManager } from "./components/ParticipantManager";
-import { WinnerAnnouncement } from "./components/WinnerAnnouncement";
 import { FinalResult } from "./components/FinalResult";
 import { Confetti } from "./components/Confetti";
 import { useBeerWheel } from "./hooks/useBeerWheel";
 import type { SessionController } from "./sessions/SessionController";
-import { wheelParticipants, sessionWinners } from "./domain/drawEngine";
-import type { Participant } from "./types";
+import { sessionWinners } from "./domain/drawEngine";
+
 export default function App({ controller }: { controller: SessionController }) {
   const {
     session,
@@ -19,21 +19,10 @@ export default function App({ controller }: { controller: SessionController }) {
   } = useBeerWheel(controller);
   const [uiNotice, setNotice] = useState("");
   const notice = error || sessionNotice || uiNotice;
-  const winners = sessionWinners(session);
-  const spinning = session.state.startsWith("spinning");
-  const locked = !capabilities.canManageParticipants || pending;
-  const change = (people: Participant[]) => {
-    void run(() => controller.setParticipants(people));
-  };
-  const spin = () => {
-    void run(() =>
-      session.state === "ready"
-        ? controller.startFirstSpin()
-        : controller.startSecondSpin(),
-    );
-  };
-  const reset = () => {
-    void run(() => controller.reset());
+  const spinning = session.state === "spinning";
+  const finished = session.state === "finished";
+  const start = () => {
+    void run(() => controller.startDraw());
   };
   if (!capabilities.canViewSession)
     return <p>Deze sessie is niet beschikbaar.</p>;
@@ -75,77 +64,63 @@ export default function App({ controller }: { controller: SessionController }) {
             {notice}
           </p>
         )}
-        <div className="game-layout">
+        <div
+          className={`game-layout ${session.winnerCount > 1 && session.participants.length ? "multi-wheel" : "single-wheel"} ${spinning ? "draw-in-progress" : ""}`}
+        >
           <section className="wheel-area" aria-label="De trekking">
-            {session.state === "finished" ? (
+            <WinnerCountControl
+              count={session.winnerCount}
+              max={session.participants.length}
+              disabled={!capabilities.canConfigureDraw || pending}
+              readOnly={!capabilities.canControlSession}
+              onChange={(count) => {
+                void run(() => controller.setWinnerCount(count));
+              }}
+            />
+            <WheelGrid session={session} />
+            {finished ? (
               <FinalResult
-                winners={winners}
-                onReset={reset}
-                onNew={() => {
-                  void run(() => controller.newDraw());
+                winners={sessionWinners(session)}
+                onAgain={start}
+                onSetup={() => {
+                  void run(() => controller.reset());
                 }}
-                canReset={capabilities.canReset && !pending}
+                canControl={capabilities.canControlSession}
+                disabled={!capabilities.canStartDraw || pending}
               />
             ) : (
-              <>
-                <div className="round-label">
-                  <span className={!winners.length ? "active" : ""}>
-                    01 <small>Eerste bierhaler</small>
-                  </span>
-                  <b>······</b>
-                  <span className={winners.length ? "active" : ""}>
-                    02 <small>Tweede bierhaler</small>
-                  </span>
-                </div>
-                <BeerWheel
-                  people={wheelParticipants(session)}
-                  spin={session.spin}
-                  spinning={spinning}
-                />
-                <div className="draw-controls" aria-live="polite">
-                  {session.state === "first-winner" ? (
-                    <WinnerAnnouncement winner={winners[0]} />
-                  ) : (
-                    <h2>
-                      {session.state === "spinning-second"
-                        ? "🍺 Wie wordt het slachtoffer nummer twee?"
-                        : "🍺 Wie haalt het eerste rondje?"}
-                    </h2>
-                  )}
-                  {capabilities.canControlSession ? (
-                    <button
-                      className="primary spin-button"
-                      disabled={!capabilities.canStartSpin || pending}
-                      onClick={spin}
-                    >
-                      {spinning
-                        ? "Het lot is in beweging…"
-                        : session.state === "first-winner"
-                          ? "Draai voor nummer 2 →"
-                          : "DRAAI HET BIERRAD!"}{" "}
-                    </button>
-                  ) : null}
-                  <p className="helper">
+              <div className="draw-controls" aria-live="polite">
+                {capabilities.canControlSession && (
+                  <button
+                    className="primary spin-button"
+                    disabled={!capabilities.canStartDraw || pending}
+                    onClick={start}
+                  >
                     {spinning
-                      ? "Spanning stijgt. Dorst ook."
-                      : !capabilities.canControlSession
-                        ? "Kijk mee. De host bedient het rad."
-                        : session.state === "setup"
-                          ? "Voeg minstens 2 deelnemers toe om te draaien."
-                          : session.state === "first-winner"
-                            ? "De eerste winnaar doet niet mee aan de tweede draai."
-                            : "Twee bierhalers. Eerlijke kansen. Koud bier."}
-                  </p>
-                </div>
-              </>
+                      ? "Het lot is in beweging…"
+                      : "🍻 DRAAI HET BIERRAD!"}
+                  </button>
+                )}
+                <p className="helper">
+                  {spinning
+                    ? "Alle raderen draaien. De spanning stijgt."
+                    : !capabilities.canControlSession
+                      ? "Kijk mee. De host bedient het rad."
+                      : !session.participants.length
+                        ? "Voeg minstens één deelnemer toe om te draaien."
+                        : `${session.winnerCount} ${session.winnerCount === 1 ? "bierhaler" : "unieke bierhalers"}. Eén druk op de knop.`}
+                </p>
+              </div>
             )}
           </section>
           <div className="sidebar">
             <ParticipantManager
               people={session.participants}
-              locked={locked}
+              locked={!capabilities.canManageParticipants || pending}
               readOnly={!capabilities.canControlSession}
-              onChange={change}
+              onChange={(people) => {
+                void run(() => controller.setParticipants(people));
+              }}
               onRestore={() => {
                 void run(() => controller.restoreParticipants());
               }}
@@ -155,8 +130,8 @@ export default function App({ controller }: { controller: SessionController }) {
               <div>
                 <strong>Het rad beslist.</strong>
                 <p>
-                  Voeg je collega's toe, draai twee keer en stuur de gelukkigen
-                  op biermissie.
+                  Kies je bierbrigade. Alle raderen draaien tegelijk, ieder met
+                  een andere gelukkige.
                 </p>
               </div>
             </div>
@@ -166,12 +141,12 @@ export default function App({ controller }: { controller: SessionController }) {
       <footer>
         <span>Met liefde gebrouwen voor de vrijdagmiddag.</span>
         <span>
-          2 bierhalers <b>·</b> 0 discussies <b>·</b> 100% toeval
+          {session.winnerCount}{" "}
+          {session.winnerCount === 1 ? "bierhaler" : "bierhalers"} <b>·</b> 0
+          discussies <b>·</b> 100% toeval
         </span>
       </footer>
-      {["first-winner", "finished"].includes(session.state) && (
-        <Confetti key={session.state} />
-      )}
+      {finished && <Confetti key={session.activeDraw?.id} />}
     </div>
   );
 }

@@ -8,7 +8,7 @@ Elke vrijdag is er maar één vraag die er echt toe doet:
 
 Bierrad maakt van die simpele vraag een klein wekelijks evenement.
 
-In plaats van twee namen willekeurig uit een lijst te trekken, maken we er bewust een moment van. Collega's melden zich aan, het rad verschijnt op het scherm, iedereen kijkt mee en twee ongelukkige — of gelukkige — collega's worden door het lot aangewezen.
+In plaats van namen uit een lijst te trekken, maken we er bewust een moment van. Collega's melden zich aan, ieder te vergeven plekje krijgt een eigen rad en iedereen kijkt mee. Een instelbaar aantal ongelukkige — of gelukkige — collega's wordt door het lot aangewezen.
 
 Bierrad moet vooral **leuk** zijn.
 
@@ -26,21 +26,18 @@ Het is:
 
 De ideale vrijdagmiddag ziet er zo uit:
 
-1. In Slack verschijnt het wekelijkse bericht over de bierronde.
-2. Collega's die meedoen reageren met `:beers:`.
-3. Iemand opent Bierrad op een groot scherm.
-4. Bierrad haalt de deelnemers uit Slack.
-5. Alle namen verschijnen op het rad.
+1. In Slack verschijnt het wekelijkse bericht over de bierronde (toekomstige integratie).
+2. Collega's melden zich aan met `:beers:`; handmatig invoeren blijft altijd mogelijk.
+3. Iemand opent Bierrad op een groot scherm en laadt de deelnemers.
+4. De host kiest het aantal bierhalers, standaard twee en maximaal het aantal deelnemers.
+5. Iedere bierhaler krijgt een eigen rad. Elk rad toont dezelfde volledige deelnemerslijst.
 6. Iedereen kan controleren of hij/zij erop staat.
-7. Er wordt op de grote knop gedrukt.
-8. Het rad begint te draaien.
-9. De spanning loopt op.
-10. Het rad stopt bij de eerste winnaar.
-11. Die persoon verdwijnt uit het rad.
-12. Het rad draait opnieuw.
-13. De tweede winnaar wordt gekozen.
-14. Bierrad presenteert beide winnaars feestelijk.
-15. De uitslag wordt in dezelfde Slack-thread geplaatst.
+7. Eén druk op de grote knop start de volledige trekking.
+8. Het systeem kiest alle unieke winnaars voordat een animatie begint.
+9. Alle raderen starten gelijktijdig. De spanning loopt op.
+10. Ze vertragen elk iets anders en stoppen kort na elkaar bij hun vooraf gekozen winnaar.
+11. Ieder rad onthult zijn bierhaler; zodra alle raderen klaar zijn volgt één feestelijke finale.
+12. De uitslag kan later in dezelfde Slack-thread worden geplaatst.
 
 Het hele proces moet binnen ongeveer een minuut kunnen plaatsvinden.
 
@@ -52,7 +49,7 @@ Maar die minuut mag wel voelen alsof de WK-finale wordt beslist.
 
 ## 1. Fun boven efficiëntie
 
-Technisch gezien kunnen we twee willekeurige namen in minder dan een milliseconde selecteren.
+Technisch gezien kunnen we alle willekeurige winnaars in minder dan een milliseconde selecteren.
 
 Dat is niet het doel.
 
@@ -66,13 +63,13 @@ Animatie, spanning, humor en presentatie zijn belangrijker dan maximale efficië
 
 De selectie moet daadwerkelijk willekeurig zijn.
 
-De winnaar wordt vóór de animatie bepaald met betrouwbare browser-randomness, bijvoorbeeld:
+Alle unieke winnaars worden als één trekking vóór de animaties bepaald met betrouwbare browser-randomness, bijvoorbeeld:
 
 ```typescript
 crypto.getRandomValues()
 ```
 
-De animatie visualiseert vervolgens die uitslag.
+De raderen visualiseren vervolgens die gezamenlijke uitslag.
 
 De animatie zelf mag nooit bepalen wie wint.
 
@@ -80,7 +77,7 @@ Daardoor kunnen we garanderen dat:
 
 - iedereen dezelfde kans heeft;
 - de animatie de uitslag niet beïnvloedt;
-- dezelfde persoon niet twee keer wordt gekozen.
+- dezelfde persoon binnen één trekking niet meermaals wordt gekozen. Iedere nieuwe trekking is onafhankelijk: eerdere winnaars mogen opnieuw winnen.
 
 ---
 
@@ -183,53 +180,35 @@ Het moet voelen alsof het rad nét langs andere kandidaten kruipt voordat het st
 
 ---
 
-# Twee winnaars
+# Een instelbare bierbrigade
 
-Bierrad kiest altijd twee verschillende personen.
+**Een trekking selecteert een instelbaar aantal unieke bierhalers.**
 
-## Ronde 1
+De standaardvoorkeur is twee; één bierhaler of een grotere groep is net zo natuurlijk. Het aantal mag nooit groter zijn dan de deelnemerslijst. Als de lijst kleiner wordt, past het effectieve aantal zich aan. De expliciete voorkeur wordt lokaal onthouden.
 
-Voor het draaien:
+Iedere winnaar krijgt een eigen rad. Alle raderen tonen de volledige deelnemerspool en starten op hetzelfde moment. Namen worden niet uit andere raderen verwijderd: centrale selectie zonder teruglegging garandeert verschillende winnaars.
 
-> 🍺 Wie haalt het eerste rondje?
+Subtiele verschillen in duur en omwentelingen maken het spannend. Deze verschillen staan vooraf vast in de gezamenlijke trekking; de weergave voegt geen toeval toe. Onder elk gestopt rad verschijnt de bijbehorende winnaar.
 
-Daarna:
+Eén rad is groot en centraal, twee en drie staan naast elkaar als daar genoeg ruimte voor is. Vier vormen bij voorkeur een gebalanceerd 2×2-raster. Meer raderen krijgen een responsive grid. Op mobiel stapelen ze onder elkaar: leesbare namen gaan boven zoveel mogelijk raderen op één rij.
 
-> 🎉 TIM! 🎉
-
-De eerste winnaar krijgt kort zijn eigen moment.
-
-Daarna verschijnt:
-
-**Draai voor nummer 2**
-
-## Ronde 2
-
-De eerste winnaar wordt uit het actieve rad verwijderd.
-
-Daarna:
-
-> 🍺 Wie wordt slachtoffer nummer twee?
-
-Het rad draait opnieuw.
-
-Na afloop worden beide namen samen gepresenteerd.
+Tijdens het draaien zijn deelnemers en aantal vergrendeld. Na de finale start **Opnieuw draaien** direct een nieuwe trekking uit dezelfde volledige pool. **Deelnemers aanpassen** brengt je terug naar de instellingen.
 
 ---
 
 # Finale
 
-De finale moet groter aanvoelen dan de individuele trekkingen.
+De finale moet groter aanvoelen dan de individuele onthullingen.
 
 Bijvoorbeeld:
 
 > # 🍻 HET RAD HEEFT GESPROKEN! 🍻
 >
-> ## TIM & JAN
+> ## TIM · JAN · ROBIN
 >
 > **Jullie mogen bier halen!**
 
-Met confetti en een duidelijke feestelijke animatie.
+Pas als alle raderen klaar zijn: confetti en een duidelijke feestelijke animatie. Alle winnaars krijgen een plek; bij één winnaar staat er “Jij mag bier halen!”.
 
 De exacte teksten mogen in de toekomst variëren.
 
@@ -249,7 +228,8 @@ Daarin kunnen gebruikers:
 - namen verwijderen;
 - deelnemers wissen;
 - eerdere deelnemers herstellen;
-- direct het rad starten.
+- het aantal bierhalers kiezen;
+- alle raderen tegelijk starten.
 
 De lijst wordt lokaal onthouden.
 
@@ -307,11 +287,12 @@ Bijvoorbeeld:
 > De gelukkige winnaars van deze week zijn:
 >
 > 🍺 Tim  
-> 🍺 Jan
+> 🍺 Jan\
+> 🍺 Robin
 >
 > Succes heren/dames. Het volk heeft dorst.
 
-De toon mag speels zijn en kan later eventueel variëren.
+Het bericht bevat alle geselecteerde bierhalers, ongeacht het aantal. De toon mag speels zijn en kan later eventueel variëren.
 
 ---
 
@@ -360,15 +341,17 @@ ParticipantSource
 └── SlackParticipantSource
 ```
 
-Het rad weet daardoor niet waar deelnemers vandaan komen.
+De deelnemersbron weet niets van winnaar- of radaantallen. De sessiecontroller laat de engine één `DrawInstruction` maken met de volledige geordende deelnemerspool en N `SpinInstruction`s. De renderers krijgen de deelnemers en hun instructie en doen uitsluitend de weergave. Geen rad kiest zelfstandig een winnaar.
 
-Het krijgt simpelweg:
-
-```typescript
-Participant[]
+```text
+ParticipantSource → SessionController → Draw Engine
+                                           ↓
+                                    DrawInstruction
+                                           ↓
+                                  SpinInstruction[]
+                                           ↓
+                                    Wheel Renderers
 ```
-
-en doet zijn werk.
 
 ---
 
@@ -468,9 +451,9 @@ De eerste versie is geslaagd wanneer we op vrijdag:
 
 1. Bierrad kunnen openen;
 2. namen kunnen invoeren;
-3. iedereen op een duidelijk rad zien;
-4. het rad overtuigend kunnen laten draaien;
-5. twee verschillende willekeurige winnaars krijgen;
+3. het aantal bierhalers kiezen en iedereen op elk rad zien;
+4. alle raderen overtuigend en gelijktijdig kunnen laten draaien;
+5. het gekozen aantal unieke willekeurige winnaars krijgen;
 6. een leuke winnaarspresentatie zien;
 7. opnieuw kunnen beginnen.
 
@@ -486,7 +469,7 @@ Wanneer collega's vrijdag vragen:
 
 moet het antwoord uiteindelijk niet zijn:
 
-*"Kies maar twee mensen."*
+*"Kies maar wat mensen."*
 
 Het antwoord moet zijn:
 
@@ -502,22 +485,22 @@ In een toekomstige versie kunnen collega's op meerdere browsers en de kantoor-tv
 
 ## Host en toeschouwers
 
-Een host beheert de deelnemers, kan ze uit Slack laden, start beide rondes en kan de trekking resetten. Toeschouwers kijken alleen mee. Een toekomstige hostweergave en liveweergave kunnen bijvoorbeeld `/host` en `/live` krijgen. De kantoor-tv is een toeschouwer en hoeft geen bediening te tonen.
+Een host beheert de deelnemers, kan ze uit Slack laden, kiest het aantal bierhalers, start alle raderen tegelijk en kan de trekking resetten. Toeschouwers kijken alleen mee. Een toekomstige hostweergave en liveweergave kunnen bijvoorbeeld `/host` en `/live` krijgen. De kantoor-tv is een toeschouwer en hoeft geen bediening te tonen.
 
 ## Hetzelfde rad, één autoriteit
 
-De server beheert de sessie, selecteert de winnaars en verstuurt dezelfde deterministische draai-instructie naar alle schermen: segmentvolgorde, winnaar, starttijd, duur en rotatie. Clients visualiseren de uitslag; ze bepalen in Live Mode nooit zelfstandig een winnaar of volgende sessietoestand.
+De server beheert de sessie, selecteert alle unieke winnaars en verstuurt één autoritatieve `DrawInstruction` naar alle schermen. Deze bevat de volledige segmentvolgorde, één gezamenlijke starttijd en meerdere `SpinInstruction`s met per rad een winnaar, duur en rotatie. Een instructie met vijf spins levert op het hostscherm, iedere spectator en de kantoor-tv dezelfde vijf raderen en dezelfde uitslag op. Clients visualiseren de uitslag; ze bepalen in Live Mode nooit zelfstandig een winnaar of volgende sessietoestand.
 
 Een kleine Cloudflare Worker met een Durable Object per sessie en WebSocket-verbindingen is een mogelijke toekomstige invulling. Dit is nog geen infrastructuurkeuze die de lokale versie nodig heeft.
 
 ## Geplande vrijdagtrekkingen
 
-Naast hostbediening kan later een automatische trekking bestaan, bijvoorbeeld op vrijdag om 15:30. De deelnemers zijn vooraf geladen, alle schermen tonen een countdown, de eerste draai start automatisch, de winnaar krijgt een kort moment en daarna volgt de tweede draai. Tot slot verschijnen beide namen en kan de uitslag in de oorspronkelijke Slack-thread worden geplaatst.
+Naast hostbediening kan later een automatische trekking bestaan, bijvoorbeeld op vrijdag om 15:30. De deelnemers zijn vooraf geladen, alle schermen tonen een countdown, alle raderen starten automatisch op de gedeelde starttijd en onthullen hun winnaars kort na elkaar. Tot slot verschijnen alle namen en kan de uitslag in de oorspronkelijke Slack-thread worden geplaatst.
 
 Slack blijft de ingang voor deelname via `:beers:` en voor de uitslag. Slack-credentials blijven uitsluitend op de backend. Handmatige lokale deelname blijft altijd mogelijk.
 
 ## Later aansluiten
 
-Een toeschouwer die tijdens het draaien opent, ontvangt de actuele sessie met de oorspronkelijke starttijd en volledige draai-instructie. Het scherm moet op het juiste punt instappen of een al voltooide uitslag tonen, zonder zelf opnieuw te loten. Klokverschillen en herverbindingen vragen later om synchronisatie op basis van de serverklok.
+Een toeschouwer die tijdens het draaien opent, ontvangt de actuele sessie met de oorspronkelijke starttijd en volledige `DrawInstruction` met alle spins. Het scherm moet op het juiste punt instappen of een al voltooide uitslag tonen, zonder zelf opnieuw te loten. Klokverschillen en herverbindingen vragen later om synchronisatie op basis van de serverklok.
 
 De huidige architectuur bereidt hiervoor sessiecontrollers, gedeelde domeinmodellen, capabilities en tijdgestuurde animatie-instructies voor. Multi-user sessies, WebSockets, automatische planning, authenticatie en de Slack-backend vallen buiten de huidige MVP.

@@ -8,14 +8,13 @@ export interface SessionSnapshot {
   readonly capabilities: SessionCapabilities;
   readonly notice: string;
 }
-/** Stable immutable snapshots for useSyncExternalStore. Remote implementations publish server snapshots. */
+/** Stable immutable snapshots. Remote implementations publish server snapshots. */
 export interface SessionController {
   getSnapshot(): SessionSnapshot;
   subscribe(listener: () => void): () => void;
   setParticipants(participants: readonly Participant[]): Promise<void>;
   restoreParticipants(): Promise<void>;
-  startFirstSpin(): Promise<void>;
-  startSecondSpin(): Promise<void>;
+  setWinnerCount(count: number): Promise<void>;
+  startDraw(): Promise<void>;
   reset(): Promise<void>;
-  newDraw(): Promise<void>;
 }

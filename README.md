@@ -1,10 +1,14 @@
 # 🍻 Bierrad 🎡
 
-Wie haalt deze week het bier? Een zelfstandige, Nederlandstalige React-app voor de vrijdagmiddag. Voeg deelnemers toe en draai twee keer: twee verschillende collega's worden de bierhalers. Geen account, database, Slack of betaalde diensten nodig.
+Wie haalt deze week het bier? Een zelfstandige, Nederlandstalige React-app voor de vrijdagmiddag. Voeg deelnemers toe, kies het aantal bierhalers en laat alle raderen tegelijk draaien. Iedere bierhaler krijgt een eigen rad en iedere trekking levert unieke winnaars op. Geen account, database, Slack of betaalde diensten nodig.
 
 ## Productvisie
 
 Lees [de productvisie](vision.md) voor de kernervaring, productprincipes en richting van Bierrad. Gebruik dit document als referentie bij ontwerpkeuzes en nieuwe features; toekomstige ideeën zijn geen MVP-requirements.
+
+## Security- en privacykaders
+
+De [security-, privacy- en agentguardrails](docs/security-guardrails.md) zijn vastgelegd als projectcontext voor toekomstige wijzigingen. Behandel frontend en browser als publiek en onbetrouwbaar; credentials en geprivilegieerde handelingen horen server-side. Toekomstige livegegevens vereisen tijdelijke sessies met afzonderlijke host- en spectatorrechten. De beschreven documentatie- en auditopdracht is nog niet uitgevoerd; dit document is geen afgeronde security-audit.
 
 ## Lokaal starten
 
@@ -24,11 +28,17 @@ npm run preview
 
 ## Gebruik
 
-Voeg minimaal twee namen toe. Namen mogen maximaal 32 tekens bevatten; dubbele namen worden zonder onderscheid tussen hoofdletters geweigerd. Start de eerste trekking en klik na de onthulling op **Draai voor nummer 2**. De eerste winnaar wordt uit het rad verwijderd. Tijdens een ronde is de deelnemerslijst vergrendeld.
+Voeg minstens één deelnemer toe en kies **Aantal bierhalers** met de min- en plusknop. De standaardvoorkeur is 2; het effectieve aantal ligt tussen 1 en het aantal deelnemers. Als de lijst kleiner wordt, daalt het aantal automatisch mee. Bij een lege lijst blijft de trekking uitgeschakeld.
 
-**Opnieuw met dezelfde deelnemers** herstelt de volledige oorspronkelijke lijst. **Nieuw bierrad** maakt het huidige rad leeg. De laatste niet-lege lijst blijft in localStorage beschikbaar via **Vorige lijst**, ook na **Alles wissen**. Een nieuwe niet-lege lijst vervangt deze opgeslagen lijst. De lijst wordt bij het openen automatisch geladen. Als browseropslag is geblokkeerd, blijft de app in het huidige venster werken en verschijnt een melding. Er wordt geen trekkinggeschiedenis opgeslagen.
+Je expliciete aantalkeuze wordt in localStorage onthouden. De voorkeur blijft bewaard als een kleinere lijst tijdelijk minder winnaars toestaat; bij uitbreiding kan de gekozen voorkeur weer gebruikt worden. Zo levert het één voor één toevoegen van deelnemers standaard twee raderen op zodra er twee mensen meedoen. Namen mogen maximaal 32 tekens bevatten; dubbele namen worden zonder onderscheid tussen hoofdletters geweigerd.
 
-Het rad werkt ook met precies twee deelnemers; de tweede draai heeft dan één segment. Bewegingsvoorkeuren van de browser worden gerespecteerd. De knop rechtsboven activeert volledig scherm waar de browser dit ondersteunt. Google Fonts is optionele visuele aankleding; systeemlettertypen blijven beschikbaar zonder externe verbinding.
+Druk op **DRAAI HET BIERRAD!** om alle raderen tegelijk te starten. Ieder rad bevat dezelfde volledige deelnemerslijst. Alle unieke winnaars worden vooraf gekozen; de animaties tonen vervolgens die uitslag. Tijdens de trekking staan deelnemers- en aantalbediening uit. De raderen stoppen kort na elkaar en onthullen elk hun eigen winnaar. Zodra alle raderen klaar zijn, verschijnt de gezamenlijke finale met confetti.
+
+**Opnieuw draaien** start direct een geheel nieuwe trekking met hetzelfde aantal en dezelfde deelnemers. Eerdere winnaars kunnen opnieuw winnen; iedere trekking is onafhankelijk. **Deelnemers aanpassen** wist de huidige uitslag en brengt je terug naar de instellingen met de deelnemers intact. Daar kun je ook de lijst wissen.
+
+De laatste niet-lege deelnemerslijst blijft beschikbaar via **Vorige lijst**, ook na **Alles wissen**. Een nieuwe niet-lege lijst vervangt deze opgeslagen lijst. De lijst wordt bij openen automatisch geladen. Bij geblokkeerde browseropslag blijft de app in het huidige venster werken. Er wordt geen trekkinggeschiedenis opgeslagen.
+
+Eén rad is groot en centraal; meerdere raderen krijgen een responsive grid van maximaal drie kolommen. Vier raderen vormen bij voldoende ruimte een 2×2-opstelling. Op een telefoon stapelen ze onder elkaar. De knop rechtsboven activeert volledig scherm waar de browser dit ondersteunt. Reduced motion wordt gerespecteerd. Google Fonts is optionele aankleding; systeemlettertypen blijven beschikbaar zonder externe verbinding.
 
 ## GitHub Pages
 
@@ -39,34 +49,42 @@ Vite gebruikt `base: './'`, zodat gebouwde bestanden ook onder `/bierrad/` werke
 ## Architectuur
 
 ```text
-ParticipantSource → SessionController → Draw Engine → SpinInstruction → Wheel Renderer
+ParticipantSource
+       ↓
+SessionController
+       ↓
+Draw Engine
+       ↓
+DrawInstruction
+       ↓
+SpinInstruction[]
+       ↓
+Wheel Renderers
 ```
 
-- **ParticipantSource** levert deelnemers. `ManualParticipantSource` leest localStorage en bewaart bestaande IDs. Een toekomstige Slack-bron kan dezelfde interface gebruiken.
-- **SessionController** is de grens voor React: een stabiele snapshot, een abonnement op updates en asynchrone commando's voor deelnemers, draaien en resetten. `LocalSessionController` is nu de autoriteit. Hij laadt de bron, kiest winnaars, maakt instructies en voltooit de trekking op zijn eigen klok. Ook zonder gemount rad gaat de sessie door. Opslag wordt via een callback aangesloten; de controller kent geen localStorage.
-- **Draw Engine** (`src/domain/drawEngine.ts`) bevat zuivere toestandsovergangen en controles. De oorspronkelijke deelnemerslijst blijft behouden; getrokken IDs en de segmentvolgorde van de laatste draai bepalen de getoonde lijst. Reset herstelt iedereen.
-- **SpinInstruction** bevat een unieke ID, ronde, geordende deelnemers-IDs, winnaar-ID, UTC-starttijd, duur, beginrotatie, eindrotatie en easing. Vanaf dat moment liggen de animatie en de uitslag vast.
-- **Wheel Renderer** (`BeerWheel` en `useWheelAnimation`) speelt uitsluitend die instructie af. Hij trekt geen winnaar, berekent geen willekeurige rotatie en kan geen sessieovergang uitvoeren. `useBeerWheel` koppelt React via `useSyncExternalStore` aan iedere implementatie van de controller-interface.
+- **ParticipantSource** levert alleen deelnemers. De bron weet niets over aantal winnaars, raderen of animaties. `ManualParticipantSource` leest lokaal opgeslagen namen en stabiele IDs; Slack blijft een toekomstige bron.
+- **SessionController** biedt stabiele snapshots, subscriptions en asynchrone commando's: `setParticipants`, `setWinnerCount`, `restoreParticipants`, `startDraw` en `reset`. `LocalSessionController` is nu de autoriteit; React is onafhankelijk van de implementatie. Opslag en aantalvoorkeur worden in `main.tsx` aangesloten.
+- **Draw Engine** kiest alle N winnaars als één operatie en bouwt de volledige instructie vóórdat een nieuwe snapshot gepubliceerd wordt. `selectUniqueWinners` gebruikt een gedeeltelijke Fisher–Yates-shuffle met `crypto.getRandomValues()` en rejection sampling, dus zonder modulo-bias. Iedere deelnemer heeft dezelfde inclusiekans en verschijnt maximaal eenmaal. De volledige deelnemerslijst blijft intact.
+- **DrawInstruction** heeft één ID, één UTC-starttijd, de volledige geordende deelnemerspool en N `SpinInstruction`s. Alle spins delen dezelfde starttijd. Elke spin bevat zijn radindex, winnaar, duur, aantal omwentelingen, beginrotatie, eindrotatie en easing. Variatie ligt vooraf vast: zes of zeven omwentelingen en 4,8 tot 5,25 seconden. De lokale trekking krijgt een gezamenlijke aanlooptijd van 100 ms.
+- **Wheel Renderers** spelen uitsluitend de ontvangen instructies af. `WheelGrid` toont één `BeerWheel` per spin en overal dezelfde volledige deelnemerspool. Geen component kiest winnaars of wijzigt animatie-eigenschappen willekeurig. `useBeerWheel` gebruikt `useSyncExternalStore` om React op sessiewijzigingen aan te sluiten.
 
-De deelbare modellen staan in `src/domain/models.ts`, zonder React- of backenddependencies. Een `BeerWheelSession` bevat één oorspronkelijke deelnemerslijst, winnaar-IDs en de laatste instructie. Die instructie blijft na afloop beschikbaar zodat een opnieuw gemount rad dezelfde positie toont. `countdown`, `scheduled` en `scheduledAt` zijn uitsluitend gereserveerde domeinbegrippen; er is geen scheduler.
+De deelbare modellen staan in `src/domain/models.ts`. Een `BeerWheelSession` bevat deelnemers, het effectieve `winnerCount`, de onthulde winnaar-IDs en `activeDraw`. Die instructie blijft na afloop beschikbaar, zodat opnieuw gemounte raderen dezelfde eindposities tonen. De toestanden zijn `setup`, `ready`, `countdown`, `spinning` en `finished`. `countdown`, `scheduled` en `scheduledAt` zijn gereserveerd voor de toekomst; er is geen scheduler.
 
-De winnaar wordt **vóór** de animatie bepaald met `crypto.getRandomValues()`. Rejection sampling voorkomt modulo-bias. De engine berekent daarna een rotatie met zes volledige omwentelingen plus uitlijning van het geselecteerde segment onder de pointer. De tweede trekking sluit de eerste winnaar uit. De lokale controller bepaalt de onthulling op `startAt + durationMs`; animatietiming heeft geen invloed op de uitslag.
+### Timing, herhalen en rollen
 
-### Tijd en rollen
+De controller onthult resultaten op hun vastgelegde deadlines en zet de sessie pas op `finished` als alle raderen voltooid zijn. Animatiecallbacks bepalen geen uitslag of sessieovergang. De renderer wacht op toekomstige starttijden, hervat een lopende animatie op de verstreken tijd binnen de oorspronkelijke easingcurve, en toont direct de eindpositie als die tijd voorbij is. Reduced motion slaat de beweging over, maar behoudt de autoritatieve eindtijd.
 
-De renderer wacht op een toekomstige `startAt`. Bij een al lopende instructie zet hij de Web Animation op de verstreken tijd binnen de oorspronkelijke easingcurve. Na de eindtijd toont hij direct de eindpositie. Dit is lokale afspeelondersteuning, **geen volledige late-join-synchronisatie**: netwerkherverbindingen, klokverschillen, verouderde events en sessieherstel moeten later door een remote adapter worden afgehandeld. Bij reduced motion blijft het rad stil en springt het op de gedeelde eindtijd naar de winnaar; de autoritatieve timing verandert niet.
+`startDraw()` werkt vanuit een klaarstaande of voltooide sessie en selecteert altijd opnieuw uit de volledige pool. Voor herhalen sluiten de beginrotaties aan op de vorige eindposities. `reset()` wist instructie en uitslag, behoudt deelnemers en aantal en opent de instellingen weer.
 
-Host- en toeschouwersrechten komen uit één capabilitymodel (`src/domain/capabilities.ts`). De UI verbergt muterende bediening voor toeschouwers. De lokale controller controleert de rechten bovendien bij ieder commando. Dit is een programmeergrens, **geen authenticatie of beveiliging tegen een aangepaste client**; een toekomstige server moet rechten zelf afdwingen. De huidige app start altijd als lokale host en heeft geen `/host`- of `/live`-routes.
+Host- en toeschouwersrechten komen uit één capabilitymodel. De UI verbergt muterende bediening voor spectators; de controller controleert ook zelf ieder commando. Dit is **geen authenticatie**: een toekomstige backend moet rechten zelf afdwingen. De huidige standalone app start als lokale host.
 
-### Later een RemoteSessionController toevoegen
+### Live Bierrad voorbereiden
 
-De compositie staat in `src/main.tsx`. Daar kan later een remote controller worden aangesloten in plaats van de lokale controller en opslagbron. De remote implementatie verstuurt hostcommando's, ontvangt server-snapshots en publiceert deze via dezelfde interface. Spectators hebben daarbij geen lokale winnaarselectie nodig. De server wordt dan verantwoordelijk voor toeval, timing, toestanden en permissies; clients mogen geen trekking voltooien.
+Een toekomstige server kan één `DrawInstruction` met bijvoorbeeld vijf spins publiceren. Alle clients krijgen dezelfde pool, resultaten, starttijd en animatieparameters. Spectators hoeven geen winnaarselectie uit te voeren. De bestaande radcomponenten kunnen dit al weergeven; alleen de remote adapter en opstartbedrading zijn nieuw werk.
 
-**Architectuurreview:** bestaande bestanden met grote wijzigingen bij toekomstige WebSockets: geen van de rad- of kern-Reactcomponenten. Alleen de opstartbedrading in `main.tsx` verandert; de remote adapter, protocolvalidatie, klokcorrectie en backend zijn nieuw werk. De gedeelde modellen kunnen later naar een gedeeld pakket verhuizen. `App`, `useBeerWheel`, `BeerWheel` en de lokale controller kunnen hun huidige verantwoordelijkheid behouden.
+Dit is **geen volledige live-synchronisatie**. Protocolvalidatie, serverklokcorrectie, reconnects, late-join-snapshots, WebSockets en Cloudflare Durable Objects moeten later worden gebouwd. Ook scheduling, authenticatie en Slack-communicatie zijn niet geïmplementeerd. De lokale app vereist geen backend of configuratie.
 
-Dit bereidt Slack-deelnemers, WebSockets, Cloudflare Durable Objects, spectators en geplande trekkingen voor. **Geen van die integraties is nu geïmplementeerd.** Er zijn geen extra dependencies, servercode, authenticatie, cronjobs of database toegevoegd. De volledige lokale flow werkt zonder Cloudflare of Slack.
-
-Tests controleren deelnemersbeheer, willekeurige selectie, controllercommando's, klokgestuurde afronding, uitsluiting van eerdere winnaars, deterministische instructies, rollen, subscriptions, opslagfouten en reset. Een React-renderingtest gebruikt bovendien een andere controllerimplementatie met vaste snapshots. Animaties worden niet frame voor frame getest.
+Tests controleren sampling voor 1 t/m alle deelnemers, ongeldige aantallen, gelijke samplingpaden, gedeelde starttijden, segmentuitlijning, deterministische instructies, staggered onthullingen, capabilities, reset, voorkeuren en onafhankelijke herhalingen. Een spectator-renderingtest speelt een instructie met vijf spins af met random APIs uitgeschakeld. Animaties worden niet frame voor frame getest.
 
 ## Geplande Slack-integratie
 
@@ -79,8 +97,7 @@ De backend ontvangt later een Slack-bericht-URL, valideert deze, extraheert kana
 
 De gelukkige winnaars van deze week zijn:
 
-🍺 [Winner 1]
-🍺 [Winner 2]
+🍺 [Naam van iedere geselecteerde bierhaler, één per regel]
 
 Succes heren/dames. Het volk heeft dorst.
 ```

@@ -1,5 +1,5 @@
 import type { ParticipantSource } from "./ParticipantSource";
-import type { Participant } from "../types";
+import type { Participant } from "../domain/models";
 import { validateParticipants } from "../utils/participants";
 const KEY = "bierrad.participants.v1";
 export class ManualParticipantSource implements ParticipantSource {

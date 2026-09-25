@@ -1,4 +1,4 @@
-import type { Participant } from "../types";
+import type { Participant } from "../domain/models";
 export interface ParticipantSource {
   getParticipants(): Promise<Participant[]>;
 }
@@ -9,7 +9,7 @@ export interface SlackThread {
 export interface WinnerPublisher {
   publishWinners(
     thread: SlackThread,
-    winners: readonly [Participant, Participant],
+    winners: readonly Participant[],
   ): Promise<void>;
 }
 export interface SlackParticipantSource extends ParticipantSource {

@@ -34,6 +34,7 @@ export function BeerWheel({
       <svg
         ref={ref}
         viewBox="0 0 420 420"
+        data-dense={people.length > 24}
         role="img"
         aria-label={`Bierrad met ${people.length} deelnemers`}
       >
@@ -54,16 +55,23 @@ export function BeerWheel({
                   strokeWidth="2"
                 />
               )}
-              <g transform={`rotate(${(i + 0.5) * step} 210 210)`}>
+              <g transform={`rotate(${(i + 0.5) * step - 90} 210 210)`}>
                 <text
-                  x="210"
-                  y="89"
+                  x="333"
+                  y="210"
+                  dominantBaseline="middle"
+                  transform={
+                    (i + 0.5) * step > 180 ? "rotate(180 333 210)" : undefined
+                  }
+                  textLength={p.name.length > 13 ? 132 : undefined}
+                  lengthAdjust="spacingAndGlyphs"
                   textAnchor="middle"
                   fill="#292820"
-                  fontSize={people.length > 16 ? 10 : 15}
+                  fontSize={people.length > 24 ? 14 : 19}
                   fontWeight="750"
                 >
-                  {p.name.length > 15 ? p.name.slice(0, 14) + "…" : p.name}
+                  <title>{p.name}</title>
+                  {p.name.length > 18 ? p.name.slice(0, 17) + "…" : p.name}
                 </text>
               </g>
             </g>

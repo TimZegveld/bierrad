@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Participant } from "../types";
+import type { Participant } from "../domain/models";
 import { addParticipant, removeParticipant } from "../utils/participants";
 import { colors } from "./BeerWheel";
 export function ParticipantManager({
@@ -97,7 +97,7 @@ export function ParticipantManager({
         <p className="empty-list">
           Iedereen een plekje op het rad.
           <br />
-          Voeg minstens twee collega's toe.
+          Voeg je collega's toe.
         </p>
       )}
       {!readOnly && (

@@ -30,7 +30,7 @@ Het rad werkt ook met precies twee deelnemers; de tweede draai heeft dan één s
 
 Repository: https://github.com/TimZegveld/bierrad
 
-Vite gebruikt `base: './'`, zodat gebouwde bestanden ook onder `/bierrad/` werken. De meegeleverde GitHub Actions-workflow test, controleert TypeScript, bouwt en publiceert bij pushes naar `main`. Kies in **Settings → Pages → Build and deployment → Source** voor **GitHub Actions**. De site komt daarna op https://timzegveld.github.io/bierrad/ . Voor handmatige hosting kun je de inhoud van `dist` als statische website publiceren. Er zijn geen serverroutes nodig.
+Vite gebruikt `base: './'`, zodat gebouwde bestanden ook onder `/bierrad/` werken. De meegeleverde GitHub Actions-workflow test, controleert TypeScript, bouwt bij pushes naar `main`; publiceren gebeurt alleen als hosting is ingeschakeld (zie hieronder). Kies in **Settings → Pages → Build and deployment → Source** voor **GitHub Actions**. De site komt daarna op https://timzegveld.github.io/bierrad/ . Voor handmatige hosting kun je de inhoud van `dist` als statische website publiceren. Er zijn geen serverroutes nodig.
 
 ## Architectuur
 

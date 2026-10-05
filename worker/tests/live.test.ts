@@ -11,6 +11,7 @@ import {
   wordLocator,
 } from "../auth";
 import { SPECTATOR_WORDS } from "../words";
+import { landingMargin } from "../../src/domain/spin";
 import {
   newSession,
   mutate,
@@ -123,23 +124,24 @@ test("server domain validates inputs, locks draws, advances by time and allows i
     assert.equal(spin.startAt, draw.startAt);
     const index = draw.participantIds.indexOf(spin.winnerId);
     assert.ok(index >= 0);
-    const alignment = (spin.targetRotation + ((index + 0.5) * 360) / 3) % 360;
-    assert.ok(Math.min(alignment, 360 - alignment) < 1e-8);
+    const position = (((-spin.targetRotation % 360) + 360) % 360) / 120 - index;
+    const margin = landingMargin(3);
+    assert.ok(position >= margin - 1e-9 && position <= 1 - margin + 1e-9);
   }
   assert.throws(() => command({ type: "reset" }));
   assert.throws(() => command({ type: "setParticipants", names: [] }));
   advance(r, now + 5000);
   assert.equal(r.session.state, "spinning");
-  advance(r, now + 10000);
+  advance(r, now + 11000);
   assert.equal(r.session.state, "finished");
   assert.equal(r.session.winnerIds.length, 3);
-  command({ type: "startDraw" }, now + 11000);
+  command({ type: "startDraw" }, now + 12000);
   assert.deepEqual(
     new Set(r.session.activeDraw!.spins.map((s) => s.winnerId)),
     new Set(draw.spins.map((s) => s.winnerId)),
   );
-  advance(r, now + 21000);
-  command({ type: "reset" }, now + 21000);
+  advance(r, now + 24000);
+  command({ type: "reset" }, now + 24000);
   assert.equal(r.session.activeDraw, undefined);
   assert.deepEqual(r.session.winnerIds, []);
   assert.throws(() => command({ type: "startDraw" }, now + TTL_MS));

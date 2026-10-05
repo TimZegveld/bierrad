@@ -98,7 +98,7 @@ GitHub Pages → React → RemoteSessionController
 - `worker/session.ts`: strikte commando-validatie, rechten, veilige DTO, aantallen, selectie, deadlines.
 - `WheelGrid`, `BeerWheel` en `useWheelAnimation`: uitsluitend deterministische weergave. De klokcontext levert alleen een tijdcorrectie en bevat geen netwerklogica.
 
-De sessiestaten zijn `setup`, `ready`, `countdown`, `spinning`, `finished`. Geen speciale eerste/tweede winnaar. Eén DrawInstruction bevat alle spins, geordende volledige deelnemerspool en één starttijd. Elke spin bevat winnaar-ID, radindex, begin/eindrotatie, duur, omwentelingen en easing. Variatie ligt vooraf vast: zes/zeven rondes en 4,8–5,25 seconden.
+De sessiestaten zijn `setup`, `ready`, `countdown`, `spinning`, `finished`. Geen speciale eerste/tweede winnaar. Eén DrawInstruction bevat alle spins, geordende volledige deelnemerspool en één starttijd. Elke spin bevat winnaar-ID, radindex, begin/eindrotatie, duur, omwentelingen en easing. Variatie ligt vooraf vast: zes/zeven rondes en 6,5–6,95 seconden, met een lang, traag uitrollend einde. Het rad stopt op een gelijk verdeelde willekeurige plek binnen het vak van de winnaar (minstens 8% en 2° van elke grens), zodat het soms net over een grens gaat en soms er net voor blijft. Die plek wordt pas na de winnaarskeuze getrokken, is alleen visueel en zit al in de eindrotatie die elk scherm krijgt.
 
 ### Timing en late kijkers
 

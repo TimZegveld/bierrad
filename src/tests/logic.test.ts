@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { addParticipant, removeParticipant } from "../utils/participants";
 import { selectUniqueWinners, randomIndex } from "../utils/random";
-import { landingRotation } from "../domain/spin";
+import { landingMargin, landingRotation } from "../domain/spin";
 import { ManualParticipantSource } from "../services/ManualParticipantSource";
 const people = ["Robin", "Tim", "Sam", "Noor"].reduce(
   addParticipant,
@@ -65,14 +65,24 @@ test("rejection sampling discards the biased tail before choosing an index", (t)
   assert.equal(calls, 2);
 });
 
-test("rotation lands the predetermined segment center under the top pointer", () => {
+test("rotation lands the chosen spot of the predetermined segment under the top pointer", () => {
   for (const count of [1, 2, 3, 8, 27])
-    for (let index = 0; index < count; index++) {
-      const rotation = landingRotation(2795, index, count);
-      assert.ok(rotation >= 2795 + 2160);
-      const alignment = (rotation + ((index + 0.5) * 360) / count) % 360;
-      assert.ok(Math.min(alignment, 360 - alignment) < 1e-8);
-    }
+    for (let index = 0; index < count; index++)
+      for (const position of [0.08, 0.3, 0.5, 0.92]) {
+        const rotation = landingRotation(2795, index, count, 6, position);
+        assert.ok(rotation >= 2795 + 2160);
+        const alignment =
+          (rotation + ((index + position) * 360) / count) % 360;
+        assert.ok(Math.min(alignment, 360 - alignment) < 1e-8);
+      }
+  assert.equal(landingRotation(0, 2, 8), landingRotation(0, 2, 8, 6, 0.5));
+});
+test("landing margin keeps the pointer clear of the slice borders", () => {
+  for (const count of [1, 2, 8, 27, 100, 1000]) {
+    const margin = landingMargin(count);
+    assert.ok(margin >= 0.08 && margin <= 0.45);
+    if (count <= 81) assert.ok((margin * 360) / count >= 2 - 1e-9);
+  }
 });
 test("manual source restores saved names and rejects corrupted data", async () => {
   let value: string | null = null;

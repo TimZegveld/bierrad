@@ -1,7 +1,11 @@
 import type { BeerWheelSession, DrawInstruction, Participant } from "./models";
-import { idleRotation, landingRotation } from "./spin";
+import { idleRotation, landingMargin, landingRotation } from "./spin";
 import { validateParticipants } from "../utils/participants";
-import { selectRiggedWinners, type DrawRig } from "../utils/random";
+import {
+  randomFraction,
+  selectRiggedWinners,
+  type DrawRig,
+} from "../utils/random";
 
 export function constrainWinnerCount(
   desired: number,
@@ -66,6 +70,7 @@ export function startDraw(
     rig,
   );
   const participantIds = session.participants.map((p) => p.id);
+  const margin = landingMargin(participantIds.length);
   const spins = winners.map((winner, wheelIndex) => {
     const rotations = 6 + (wheelIndex % 2);
     const startRotation =
@@ -76,7 +81,7 @@ export function startDraw(
       wheelIndex,
       winnerId: winner.id,
       startAt: timing.startAt,
-      durationMs: 4800 + [0, 300, 150, 450, 250][wheelIndex % 5],
+      durationMs: 6500 + [0, 300, 150, 450, 250][wheelIndex % 5],
       rotations,
       startRotation,
       targetRotation: landingRotation(
@@ -84,8 +89,11 @@ export function startDraw(
         participantIds.indexOf(winner.id),
         participantIds.length,
         rotations,
+        // Uniform like a real wheel: sometimes just past a border, sometimes just short.
+        margin + randomFraction() * (1 - 2 * margin),
       ),
-      easing: "cubic-bezier(.35,0,.12,1)" as const,
+      // Long, slow tail so the last border crossings stay exciting.
+      easing: "cubic-bezier(.3,0,0,1)" as const,
     };
   });
   return {

@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import {
   DEFAULT_RATING_SETTINGS,
   type RatingSettings,
@@ -29,6 +35,7 @@ import {
 import { configuredApiUrl } from "../sessions/liveNavigation";
 import { RemoteSessionController } from "../sessions/RemoteSessionController";
 import App from "../App";
+import { TimeLeft } from "./TimeLeft";
 
 const clock = new Intl.DateTimeFormat("nl-NL", {
   timeZone: "Europe/Amsterdam",
@@ -163,6 +170,7 @@ export function ChannelWheelPage({
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState("");
   const [gone, setGone] = useState(false);
+  const live = useRoundController(api, status?.round?.spectatorCapability);
   const run = useCallback(
     async (command?: ChannelCommand) => {
       if (!api) return;
@@ -265,7 +273,12 @@ export function ChannelWheelPage({
             {status.round.active ? (
               <span>
                 {roundLabel(variant)}! Het rad draait om{" "}
-                {clock.format(Date.parse(status.round.startAt))}. Klik op{" "}
+                {clock.format(Date.parse(status.round.startAt))}
+                <ServerTimeLeft
+                  controller={live}
+                  startAt={Date.parse(status.round.startAt)}
+                />
+                . Klik op{" "}
                 {themes[variant].icon} onder de oproep in Slack om mee te doen.
               </span>
             ) : (
@@ -313,11 +326,7 @@ export function ChannelWheelPage({
               />
             </div>
           )}
-          <ChannelLive
-            key={status.round.spectatorCapability}
-            apiUrl={api}
-            capability={status.round.spectatorCapability}
-          />
+          <ChannelLive key={status.round.spectatorCapability} controller={live} />
         </div>
         {admin && <div className="unavailable channel-page">{admin}</div>}
       </ChannelTheme>
@@ -399,6 +408,7 @@ export function ChannelViewPage({ capability }: { capability: string }) {
   const [channelName, setChannelName] = useState<string>();
   const [shown, setShown] = useState<ChannelVariant>("coffee");
   const [gone, setGone] = useState(false);
+  const live = useRoundController(api, round?.spectatorCapability);
   useEffect(() => {
     if (!api) return;
     let active = true;
@@ -454,16 +464,23 @@ export function ChannelViewPage({ capability }: { capability: string }) {
           <div className="channel-strip" aria-live="polite">
             <strong>{channelTitle(shown, channelName)}</strong>
             <span>
-              {round.active
-                ? `${roundLabel(shown)}! Het rad draait om ${clock.format(Date.parse(round.startAt))}. Klik op ${themes[shown].icon} onder de oproep in Slack om mee te doen.`
-                : "Typ /koffierad of /waterrad in het kanaal voor een nieuwe ronde."}
+              {round.active ? (
+                <>
+                  {roundLabel(shown)}! Het rad draait om{" "}
+                  {clock.format(Date.parse(round.startAt))}
+                  <ServerTimeLeft
+                    controller={live}
+                    startAt={Date.parse(round.startAt)}
+                  />
+                  . Klik op {themes[shown].icon} onder de oproep in Slack om
+                  mee te doen.
+                </>
+              ) : (
+                "Typ /koffierad of /waterrad in het kanaal voor een nieuwe ronde."
+              )}
             </span>
           </div>
-          <ChannelLive
-            key={round.spectatorCapability}
-            apiUrl={api}
-            capability={round.spectatorCapability}
-          />
+          <ChannelLive key={round.spectatorCapability} controller={live} />
         </div>
       </ChannelTheme>
     );
@@ -481,25 +498,45 @@ export function ChannelViewPage({ capability }: { capability: string }) {
   );
 }
 
-/** The live wheel of one round, as a spectator; remounted for every new round. */
-function ChannelLive({
-  apiUrl,
-  capability,
-}: {
-  apiUrl: string;
-  capability: string;
-}) {
-  const [controller, setController] = useState<RemoteSessionController>();
+/**
+ * One spectator connection per round, shared by the strip and the wheel so both
+ * use the same corrected server clock. A new round gets a fresh controller.
+ */
+function useRoundController(apiUrl?: string, capability?: string) {
+  const [live, setLive] = useState<{
+    capability: string;
+    controller: RemoteSessionController;
+  }>();
   useEffect(() => {
-    const current = new RemoteSessionController({
+    if (!apiUrl || !capability) return;
+    const controller = new RemoteSessionController({
       apiUrl,
       capability,
       role: "spectator",
     });
-    setController(current);
-    void current.initialize();
-    return () => current.dispose();
+    setLive({ capability, controller });
+    void controller.initialize();
+    return () => controller.dispose();
   }, [apiUrl, capability]);
+  return live?.capability === capability ? live?.controller : undefined;
+}
+const noSubscription = () => () => {};
+/** The strip's "· nog m:ss", on the round's server clock once it is known. */
+function ServerTimeLeft({
+  controller,
+  startAt,
+}: {
+  controller?: RemoteSessionController;
+  startAt: number;
+}) {
+  const offsetMs = useSyncExternalStore(
+    controller?.subscribe ?? noSubscription,
+    () => controller?.getSnapshot().clockOffsetMs ?? 0,
+  );
+  return <TimeLeft startAt={startAt} offsetMs={offsetMs} />;
+}
+/** The live wheel of one round, as a spectator; keyed per round so it remounts. */
+function ChannelLive({ controller }: { controller?: RemoteSessionController }) {
   return controller ? (
     <App controller={controller} />
   ) : (

@@ -152,9 +152,8 @@ header {
   height: 40px;
   background: #302e26;
   clip-path: polygon(0 0, 100% 0, 100% 43%, 50% 100%, 0 43%);
-}
-.is-spinning .pointer {
-  animation: tick 0.15s infinite alternate;
+  /* usePointerTicks flicks the tip from this pivot as rim pegs pass. */
+  transform-origin: 50% 0;
 }
 .wheel-hub {
   position: absolute;
@@ -450,11 +449,6 @@ footer b {
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-@keyframes tick {
-  to {
-    transform: rotate(10deg);
   }
 }
 

@@ -17,7 +17,7 @@ import {
   resetSession,
   wheelParticipants,
 } from "../domain/drawEngine";
-import { getSpinTiming } from "../domain/spin";
+import { getSpinTiming, landingMargin } from "../domain/spin";
 import { LocalWinnerCountPreference } from "../services/WinnerCountPreference";
 
 const people: Participant[] = [
@@ -79,7 +79,7 @@ test("manual controller selects all winners atomically and reveals at individual
     () => controller.restoreParticipants(),
   ])
     await assert.rejects(command());
-  clock.advance(4899); // Shared 100ms lead-in, shortest duration 4800ms.
+  clock.advance(6599); // Shared 100ms lead-in, shortest duration 6500ms.
   assert.equal(controller.getSnapshot().session.winnerIds.length, 0);
   clock.advance(1);
   assert.equal(controller.getSnapshot().session.winnerIds.length, 1);
@@ -105,7 +105,7 @@ test("one participant and one winner are a valid draw", async () => {
   await controller.setParticipants(people.slice(0, 1));
   assert.equal(controller.getSnapshot().session.winnerCount, 1);
   await controller.startDraw();
-  clock.advance(5000);
+  clock.advance(7000);
   assert.deepEqual(controller.getSnapshot().session.winnerIds, [people[0].id]);
   controller.dispose();
 });
@@ -147,6 +147,24 @@ test("winner count defaults to two when possible, clamps to roster, and preserve
   restored.dispose();
 });
 
+test("wheels stop at a random spot inside the winning slice, not its center", () => {
+  const margin = landingMargin(people.length);
+  const positions = Array.from({ length: 40 }, () => {
+    const draw = startDraw(createSession("spot", people, 1), {
+      id: "draw",
+      startAt: "2030-09-25T13:30:00Z",
+    }).activeDraw!;
+    const spin = draw.spins[0];
+    return (
+      (((-spin.targetRotation % 360) + 360) % 360) / (360 / people.length) -
+      draw.participantIds.indexOf(spin.winnerId)
+    );
+  });
+  for (const p of positions)
+    assert.ok(p >= margin - 1e-9 && p <= 1 - margin + 1e-9);
+  // Both halves of the slice occur (all 40 on one side: chance 2⁻³⁹).
+  assert.ok(positions.some((p) => p < 0.5) && positions.some((p) => p > 0.5));
+});
 test("one instruction contains N unique results, identical pools and a shared future start", () => {
   for (const count of [1, 2, 3, 4, 5, people.length]) {
     const session = startDraw(createSession("test", people, count), {
@@ -166,10 +184,11 @@ test("one instruction contains N unique results, identical pools and a shared fu
       assert.equal(spin.startAt, draw.startAt);
       const winnerIndex = draw.participantIds.indexOf(spin.winnerId);
       assert.ok(winnerIndex >= 0);
-      const alignment =
-        (spin.targetRotation + ((winnerIndex + 0.5) * 360) / people.length) %
-        360;
-      assert.ok(Math.min(alignment, 360 - alignment) < 1e-8);
+      const position =
+        (((-spin.targetRotation % 360) + 360) % 360) / (360 / people.length) -
+        winnerIndex;
+      const margin = landingMargin(people.length);
+      assert.ok(position >= margin - 1e-9 && position <= 1 - margin + 1e-9);
       assert.ok(
         spin.targetRotation >= spin.startRotation + spin.rotations * 360,
       );
@@ -210,7 +229,7 @@ test("repeat draw can select exactly the same winners, with new instructions and
   const controller = new LocalSessionController({ clock });
   await controller.setParticipants(people);
   await controller.startDraw();
-  clock.advance(6000);
+  clock.advance(7500);
   const previous = controller.getSnapshot().session;
   await controller.startDraw();
   const next = controller.getSnapshot().session;
@@ -223,7 +242,7 @@ test("repeat draw can select exactly the same winners, with new instructions and
   next.activeDraw!.spins.forEach((s, i) =>
     assert.equal(s.startRotation, previous.activeDraw!.spins[i].targetRotation),
   );
-  clock.advance(6000);
+  clock.advance(7500);
   assert.equal(controller.getSnapshot().session.state, "finished");
   controller.dispose();
 });

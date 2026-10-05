@@ -430,12 +430,12 @@ export function mutate(
         record.ratingSettings?.enabled &&
         now +
           START_DELAY_MS +
-          5250 +
+          6950 +
           record.ratingSettings.delayMinutes * 60000 >=
           record.expiresAt
       )
         throw new RequestError(409, "ending");
-      if (now + START_DELAY_MS + 5250 >= record.expiresAt)
+      if (now + START_DELAY_MS + 6950 >= record.expiresAt)
         throw new RequestError(409, "ending");
       record.session = {
         ...startDraw(record.session, {

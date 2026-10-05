@@ -18,7 +18,12 @@ import {
   wheelCount,
 } from "../domain/drawEngine";
 import { getCapabilities } from "../domain/capabilities";
-import { idleRotation } from "../domain/spin";
+import {
+  idleRotation,
+  landingMargin,
+  pegsPassed,
+  unwrapRotation,
+} from "../domain/spin";
 import { addParticipant } from "../utils/participants";
 import type { Participant } from "../domain/models";
 
@@ -181,9 +186,11 @@ test("wheels rest at distinct deterministic slices without changing the landing"
   draw.spins.forEach((spin, i) => {
     assert.equal(spin.startRotation, idleRotation(i, people.length));
     const index = draw.participantIds.indexOf(spin.winnerId);
-    const alignment =
-      (spin.targetRotation + ((index + 0.5) * 360) / people.length) % 360;
-    assert.ok(Math.min(alignment, 360 - alignment) < 1e-8);
+    const step = 360 / people.length;
+    const position =
+      (((-spin.targetRotation % 360) + 360) % 360) / step - index;
+    const margin = landingMargin(people.length);
+    assert.ok(position >= margin - 1e-9 && position <= 1 - margin + 1e-9);
   });
   assert.equal(idleRotation(0, 0), 0);
 });
@@ -198,4 +205,14 @@ test("measured stages choose the grid with the largest wheels", () => {
   assert.equal(bestWheelColumns(2, 700, 1300, 20), 1);
   // Unmeasured stages fall back to the default table.
   assert.equal(bestWheelColumns(4, 0, 0, 20), wheelColumns(4));
+});
+test("pointer ticks once per rim peg, in either direction and across the 180° wrap", () => {
+  assert.equal(pegsPassed(0, 11, 32), 0);
+  assert.equal(pegsPassed(0, 11.25, 32), 1);
+  assert.equal(pegsPassed(5, 360 + 5, 32), 32);
+  assert.equal(pegsPassed(-1, 1, 32), 1);
+  assert.equal(pegsPassed(30, 10, 32), 2);
+  assert.equal(unwrapRotation(170, -170), 190);
+  assert.equal(unwrapRotation(720 + 179, -179), 720 + 181);
+  assert.equal(unwrapRotation(10, 5), 5);
 });

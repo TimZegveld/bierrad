@@ -32,7 +32,8 @@ export interface DrawRig {
   readonly weights?: Readonly<Record<string, number>>;
   readonly forcedIds?: readonly string[];
 }
-function randomFraction(): number {
+/** Uniform in [0, 1). */
+export function randomFraction(): number {
   return randomIndex(0x100000000) / 0x100000000;
 }
 /** Forced winners first (random subset if too many), then weighted picks without replacement; wheel order is shuffled. */

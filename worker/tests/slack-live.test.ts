@@ -532,7 +532,7 @@ for (const variant of ["beer", "coffee", "water"] as const)
         users = ["U00000003"];
         assert.equal(posts, 0);
         // No browser, socket, polling, or completion callback: only durable alarm runs.
-        await new Promise((resolve) => setTimeout(resolve, 13000));
+        await new Promise((resolve) => setTimeout(resolve, 15000));
         assert.equal(readCalls, readsBeforeStart + 1);
         state = await snapshot(host);
         assert.equal(state.scheduledDraw, undefined);
@@ -584,7 +584,7 @@ for (const variant of ["beer", "coffee", "water"] as const)
         // A definite rejection is retryable, once; ambiguous delivery never is.
         mode = "reject";
         assert.equal((await command({ type: "startDraw" })).status, 200);
-        await new Promise((resolve) => setTimeout(resolve, 10500));
+        await new Promise((resolve) => setTimeout(resolve, 12500));
         state = await snapshot(host);
         assert.equal(state.state, "finished");
         assert.equal(state.slack?.result?.status, "failed");

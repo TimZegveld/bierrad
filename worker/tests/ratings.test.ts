@@ -2,7 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
-import { newSession, mutate, publicSession } from "../session";
+import {
+  newSession,
+  mutate,
+  publicSession,
+  RequestError,
+  START_DELAY_MS,
+} from "../session";
 import { hashSecret, randomHex } from "../auth";
 import { ratingLocator } from "../rating-utils";
 import { parseLoginCookie } from "../slack/login";
@@ -58,6 +64,16 @@ test("rating settings are opt-in, validated, Slack-only and freeze the electorat
     ),
   );
   command({ type: "setRatings", settings: { enabled: true, delayMinutes: 3 } });
+  const expiry = r.expiresAt;
+  // The longer spins on main must still leave time for the rating prompt to open.
+  r.expiresAt = now + START_DELAY_MS + 6950 + 180000;
+  assert.throws(
+    () => command({ type: "startDraw" }),
+    (error: unknown) => error instanceof RequestError && error.code === "ending",
+  );
+  assert.equal(r.session.activeDraw, undefined);
+  assert.equal(r.ratingRounds?.length ?? 0, 0);
+  r.expiresAt = expiry;
   command({ type: "startDraw" });
   const round = r.ratingRounds![0];
   const draw = r.session.activeDraw!;

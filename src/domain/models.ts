@@ -21,7 +21,7 @@ export interface SpinInstruction {
   readonly rotations: number;
   readonly startRotation: number;
   readonly targetRotation: number;
-  readonly easing: "cubic-bezier(.35,0,.12,1)";
+  readonly easing: "cubic-bezier(.3,0,0,1)";
 }
 export interface DrawInstruction {
   readonly id: string;

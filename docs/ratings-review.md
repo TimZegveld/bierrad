@@ -21,6 +21,8 @@ De expliciet aangevraagde privacy-uitzondering staat in [SECURITY.md](../SECURIT
 
 Er zijn geen projectdependencies toegevoegd. Backendpublicatie vereist binding `RATINGS` en SQLite-migratie `v3`; deploy de backend vóór het frontend. Er is geen nieuwe Slack-scope of secret nodig. De checks gebruiken de echte lokale workerd/SQLite-runtime, met synthetische Slack-responses. Echte Slack-login en Cloudflare-productie zijn niet gepubliceerd of live getest.
 
+Na samenvoegen met `main` zijn de langere spins (6,5–6,95 seconden), de wijzertik per pennetje en de gedeelde serverklok voor de kanaalafteller behouden. De servercontrole vóór een trekking houdt ook voor beoordelingen rekening met de nieuwe maximale spinduur. Een regressiecontrole weigert een trekking als de beoordelingswachttijd precies bij sessie-expiry zou eindigen, zonder de trekking of stemrechten vast te leggen. De beveiligingsreview bevestigt dat toegangsrechten, de eenmalige stemclaim, tijdelijke bewaartermijnen en de autoriteit van de server behouden blijven.
+
 ## Visuele evaluatie
 
 Gecontroleerd in de ingebouwde browser, op desktop en een smal scherm (ongeveer 355 CSS-pixels), met de werkelijke React-componenten en lokale synthetische previewdata. Dit controleert de presentatie en bediening; de backend wordt afzonderlijk door integratietests gecontroleerd.

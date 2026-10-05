@@ -307,7 +307,7 @@ test("posting freezes official winners/target; thread-only safe singular/plural;
       (s) => r.session.participants.find((p) => p.id === s.winnerId)!.name,
     ),
   );
-  advance(r, now + 10000);
+  advance(r, now + 11000);
   const official = structuredClone(r.session);
   const body = resultBody(job);
   assert.equal(body.thread_ts, source.parentMessageTs);
@@ -364,7 +364,7 @@ test("posting freezes official winners/target; thread-only safe singular/plural;
       r,
       "host",
       { type: "slackRetry", revision: r.revision },
-      now + 10000,
+      now + 11000,
     ),
   );
   assert.throws(() =>
@@ -372,7 +372,7 @@ test("posting freezes official winners/target; thread-only safe singular/plural;
       r,
       "spectator",
       { type: "slackRetry", revision: r.revision },
-      now + 10000,
+      now + 11000,
     ),
   );
   queueResult(r);
@@ -479,22 +479,22 @@ test("refresh after manual mode retains Slack identities without duplicating par
   );
   mutate(record, "host", { type: "startDraw", revision: record.revision }, now);
   assert.equal(record.slack.job, undefined);
-  advance(record, now + 10000);
+  advance(record, now + 11000);
   mutate(
     record,
     "host",
     { type: "reset", revision: record.revision },
-    now + 10000,
+    now + 11000,
   );
   for (let attempt = 0; attempt < 3; attempt++) {
-    reconcile(record, source, people, now + 10000);
+    reconcile(record, source, people, now + 11000);
     assert.deepEqual(
       record.session.participants.map((p) => p.name),
       ["Bob", "Alice", "Alice (2)"],
     );
     assert.deepEqual(record.slack.mapping, ids);
   }
-  reconcile(record, source, [{ ...people[0], name: "Alex" }], now + 10000);
+  reconcile(record, source, [{ ...people[0], name: "Alex" }], now + 11000);
   assert.deepEqual(
     record.session.participants.map((p) => p.name),
     ["Bob", "Alex"],

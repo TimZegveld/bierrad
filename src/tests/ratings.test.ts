@@ -31,7 +31,7 @@ test("fractional star graphics preserve averages, accessible counts and unique c
   assert.ok(widths.some((w) => Math.abs(w - 6) < 0.001));
 });
 
-test("ratings start disabled and the enabled control explains the delay and one vote rule", () => {
+test("ratings start disabled and the enabled control provides the delay", () => {
   const off = renderToStaticMarkup(
     createElement(RatingSettingsControl, { onChange() {} }),
   );
@@ -43,8 +43,7 @@ test("ratings start disabled and the enabled control explains the delay and one 
     }),
   );
   assert.ok(on.includes('value="3"'));
-  assert.ok(on.includes("minuten na de trekking"));
-  assert.ok(on.includes("Eén keer per trekking"));
+  assert.ok(on.includes("Wachttijd na trekking"));
 });
 
 test("every wheel theme renders fractional stars under both orientations of a name without choosing winners", () => {

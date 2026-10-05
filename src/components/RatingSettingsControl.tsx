@@ -25,7 +25,6 @@ export function RatingSettingsControl({
           <strong>
             {defaults ? "Beoordelingen standaard aan" : "Geef de haler sterren"}
           </strong>
-          <small>Een beetje waardering voor de volgende ronde.</small>
         </span>
         <span className="rating-settings-icon" aria-hidden="true">
           ★
@@ -34,28 +33,27 @@ export function RatingSettingsControl({
       {value.enabled && (
         <div className="rating-delay">
           <label>
-            Beoordelen vanaf{" "}
-            <input
-              type="number"
-              min="1"
-              max="30"
-              value={value.delayMinutes}
-              onChange={(e) => {
-                const delayMinutes = Number(e.target.value);
-                if (
-                  Number.isInteger(delayMinutes) &&
-                  delayMinutes >= 1 &&
-                  delayMinutes <= 30
-                )
-                  onChange({ ...value, delayMinutes });
-              }}
-            />{" "}
-            minuten na de trekking
+            <span>Wachttijd na trekking</span>
+            <span className="rating-delay-value">
+              <input
+                aria-label="Wachttijd na de trekking in minuten"
+                type="number"
+                min="1"
+                max="30"
+                value={value.delayMinutes}
+                onChange={(e) => {
+                  const delayMinutes = Number(e.target.value);
+                  if (
+                    Number.isInteger(delayMinutes) &&
+                    delayMinutes >= 1 &&
+                    delayMinutes <= 30
+                  )
+                    onChange({ ...value, delayMinutes });
+                }}
+              />
+              <span>min</span>
+            </span>
           </label>
-          <small>
-            Alleen Slack-deelnemers kunnen stemmen. Eén keer per trekking, tot
-            de sessie verloopt.
-          </small>
         </div>
       )}
     </fieldset>

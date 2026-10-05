@@ -28,6 +28,7 @@ Gecontroleerd in de ingebouwde browser, op desktop en een smal scherm (ongeveer 
 | Vorm | Bevinding |
 | --- | --- |
 | Bier, instellingen aan / uit | Warm gele kaart; uit verbergt wachttijd en sterren |
+| Compacte beoordelingsinstellingen | Alleen schakelaar en wachttijd; 20 pixels afstand tot het deelnemersvak op desktop en mobiel, zonder horizontale overloop |
 | Koffie, twee winnaars | Afzonderlijke sterrenkeuze per haler; versturen pas na alle keuzes |
 | Water, één winnaar op mobiel | Aqua kleuren, vijf aanraakbare keuzes; geen horizontale pagina-overloop |
 | Gemiddelden 1,8 / 4,3 / 5,0 / geen beoordelingen | Werkelijk gedeeltelijk ingekleurde SVG-sterren; Nederlandse getallen en aantallen in de lijst |

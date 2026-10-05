@@ -1629,12 +1629,15 @@ code.channel-view-link {
 }
 .rating-settings {
   margin: 0;
-  padding: 18px;
+  padding: 16px;
   border: 1px solid var(--rating-border);
   border-radius: 18px;
   background: var(--rating-soft);
   min-width: 0;
   text-align: left;
+}
+.sidebar > .rating-settings {
+  margin-bottom: 20px;
 }
 .rating-toggle {
   display: flex;
@@ -1652,13 +1655,6 @@ code.channel-view-link {
   display: block;
   font-size: 14px;
 }
-.rating-toggle small {
-  display: block;
-  margin-top: 4px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: #686053;
-}
 .rating-settings-icon {
   margin-left: auto;
   color: var(--rating-gold);
@@ -1666,25 +1662,30 @@ code.channel-view-link {
 }
 .rating-delay {
   border-top: 1px solid var(--rating-border);
-  margin-top: 14px;
-  padding-top: 14px;
+  margin-top: 12px;
+  padding-top: 12px;
   font-size: 13px;
   line-height: 1.8;
 }
+.rating-delay label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rating-delay-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .rating-delay input {
-  width: 60px;
+  width: 52px;
   padding: 6px 8px;
   border-radius: 8px;
   border: 1px solid var(--rating-border);
   background: #fffefa;
   text-align: center;
-}
-.rating-delay > small {
-  display: block;
-  margin-top: 8px;
-  color: #686053;
-  font-size: 11px;
-  line-height: 1.6;
 }
 .channel-rating-options {
   max-width: 520px;

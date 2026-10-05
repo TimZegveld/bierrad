@@ -21,6 +21,7 @@ import {
 } from "../auth";
 import { frontend, json } from "../http";
 import { RequestError } from "../session";
+import { validRatingSettings, type RatingSettings } from "../../shared/ratings";
 import { SlackApiClient } from "../slack/api";
 import {
   loginConfigured,
@@ -49,6 +50,7 @@ interface Round {
   spectatorCapability: string;
 }
 interface Binding {
+  ratingSettings?: RatingSettings;
   locator: string;
   channelId: string;
   teamId: string;
@@ -207,6 +209,9 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
       viewerCapability: viewer,
       ...(previous?.channelName ? { channelName: previous.channelName } : {}),
       defaultMinutes: previous?.defaultMinutes ?? DEFAULT_ROUND_MINUTES,
+      ...(previous?.ratingSettings
+        ? { ratingSettings: previous.ratingSettings }
+        : {}),
       createdAt: now,
       expiresAt: now + CHANNEL_IDLE_TTL_MS,
       window: previous?.window ?? now,
@@ -216,7 +221,8 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
     this.save(binding);
     await this.arm(binding);
     await this.addViewer(binding, viewer);
-    if (stored?.viewerCapability) await this.dropViewer(stored.viewerCapability);
+    if (stored?.viewerCapability)
+      await this.dropViewer(stored.viewerCapability);
   }
   /** Pointer objects only: remember which channel a word link belongs to. */
   async point(channel: string): Promise<void> {
@@ -237,7 +243,9 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
       .exec("SELECT name FROM sqlite_master WHERE name = 'pointer'")
       .toArray().length
       ? this.ctx.storage.sql
-          .exec<{ channel: string }>("SELECT channel FROM pointer WHERE singleton = 1")
+          .exec<{
+            channel: string;
+          }>("SELECT channel FROM pointer WHERE singleton = 1")
           .toArray()[0]
       : undefined;
     if (!row) return json({ code: "unavailable" }, 404);
@@ -312,6 +320,9 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
       role,
       variant: (shown ? round.variant : binding.lastVariant) ?? "coffee",
       defaultMinutes: binding.defaultMinutes,
+      ...(binding.ratingSettings
+        ? { ratingSettings: binding.ratingSettings }
+        : {}),
       ...(shown
         ? {
             round: {
@@ -364,7 +375,8 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
         } satisfies ChannelCommandResult);
       }
       const allowed: Record<string, string[]> = {
-        requestRound: ["minutes", "variant"],
+        requestRound: ["minutes", "variant", "ratingSettings"],
+        setRatingDefaults: ["settings"],
         setDefaultMinutes: ["minutes"],
         rotateRequestLink: [],
         unbind: [],
@@ -385,12 +397,15 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
       if (input.type === "requestRound") {
         if (
           !validRoundMinutes(input.minutes) ||
+          ("ratingSettings" in input &&
+            !validRatingSettings(input.ratingSettings)) ||
           ("variant" in input && !isChannelVariant(input.variant))
         )
           throw new RequestError(400, "invalid");
         await this.startRound(
           input.minutes,
           isChannelVariant(input.variant) ? input.variant : "coffee",
+          input.ratingSettings as RatingSettings | undefined,
         );
       } else {
         if (role !== "admin") throw new RequestError(403, "forbidden");
@@ -401,7 +416,12 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
           await this.expire();
           return json({ type: "unbound" } satisfies ChannelCommandResult);
         }
-        if (input.type === "setDefaultMinutes") {
+        if (input.type === "setRatingDefaults") {
+          if (!validRatingSettings(input.settings))
+            throw new RequestError(400, "invalid");
+          binding.ratingSettings = { ...input.settings };
+          this.save(binding);
+        } else if (input.type === "setDefaultMinutes") {
           if (!validRoundMinutes(input.minutes))
             throw new RequestError(400, "invalid");
           binding.defaultMinutes = input.minutes;
@@ -480,6 +500,7 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
   private async startRound(
     minutes: number,
     variant: ChannelVariant,
+    requestedRatings?: RatingSettings,
   ): Promise<{ startAt: string; spectatorCapability: string }> {
     const reaction = themes[variant].reaction;
     const spectator = randomWords();
@@ -510,13 +531,14 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
     if (binding.rounds >= MAX_ROUNDS_PER_DAY)
       throw new RequestError(429, "round_limit");
     const startAt = roundStartAt(now, minutes);
+    const ratings = requestedRatings ?? binding.ratingSettings;
     const id = crypto.randomUUID();
     binding.round = {
       id,
       variant,
       status: "posting",
       startAt,
-      endsAt: startAt + ROUND_WATCH_MS,
+      endsAt: startAt + (ratings?.enabled ? 60 * 60000 : ROUND_WATCH_MS),
       spectatorCapability: spectator,
     };
     binding.rounds++;
@@ -575,6 +597,8 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
         startAt,
         binding.botUserId ? [binding.botUserId] : [],
         variant,
+        ratings,
+        binding.teamId,
       );
     } catch {
       clear();

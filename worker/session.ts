@@ -1,5 +1,10 @@
 import type { WheelVariant } from "../shared/variant";
 import {
+  validRatingSettings,
+  type RatingSettings,
+  type RatingRound,
+} from "../shared/ratings";
+import {
   queueChannelNotice,
   queueResult,
   REMINDER_LEAD_MS,
@@ -35,6 +40,12 @@ export class RequestError extends Error {
   }
 }
 export interface StoredSession {
+  ratingSettings?: RatingSettings;
+  ratingRounds?: (RatingRound & {
+    electorate: string[];
+    identities: Record<string, string>;
+  })[];
+  ratingGrants?: Record<string, { hash: string; drawId: string }>;
   variant?: WheelVariant;
   session: BeerWheelSession;
   hostHash: string;
@@ -74,7 +85,13 @@ export function publicSession(record: StoredSession): PublicBeerWheelSession {
   const s = record.session;
   return {
     variant: record.variant ?? "beer",
-    participants: s.participants.map((p) => ({ id: p.id, name: p.name })),
+    participants: s.participants.map((p) => ({
+      id: p.id,
+      name: p.name,
+      ...(record.ratingSettings?.enabled && p.rating
+        ? { rating: { average: p.rating.average, count: p.rating.count } }
+        : {}),
+    })),
     winnerCount: s.winnerCount,
     state: s.state,
     winnerIds: [...s.winnerIds],
@@ -108,6 +125,18 @@ export function publicSession(record: StoredSession): PublicBeerWheelSession {
       : {}),
     expiresAt: new Date(record.expiresAt).toISOString(),
     revision: record.revision,
+    ...(record.ratingSettings
+      ? {
+          ratings: {
+            ...record.ratingSettings,
+            rounds: (record.ratingRounds ?? []).map((r) => ({
+              drawId: r.drawId,
+              opensAt: r.opensAt,
+              winners: r.winners.map((w) => ({ id: w.id, name: w.name })),
+            })),
+          },
+        }
+      : {}),
   };
 }
 /** Only the durable alarm calls this after its final server-side Slack check. */
@@ -232,6 +261,7 @@ export function mutate(
     throw new RequestError(409, "conflict");
   const command = input as Record<string, unknown>;
   const allowed: Record<string, string[]> = {
+    setRatings: ["settings"],
     setParticipants: ["names"],
     setWinnerCount: ["count"],
     setScheduledDraw: ["startAt", "spectatorCapability"],
@@ -282,6 +312,14 @@ export function mutate(
     if (!value) throw new RequestError(409, "not_ready");
   };
   switch (command.type) {
+    case "setRatings":
+      require(caps.canManageParticipants);
+      if (!validRatingSettings(command.settings))
+        throw new RequestError(400, "invalid");
+      if (!record.slack?.teamId)
+        throw new RequestError(403, "ratings_slack_required");
+      record.ratingSettings = { ...command.settings };
+      break;
     case "setParticipants": {
       require(caps.canManageParticipants);
       if (
@@ -378,6 +416,25 @@ export function mutate(
     }
     case "startDraw":
       require(caps.canStartDraw);
+      if (
+        record.ratingSettings?.enabled &&
+        (!record.slack?.source || !record.slack.teamId)
+      )
+        throw new RequestError(409, "ratings_slack_required");
+      if (
+        record.ratingSettings?.enabled &&
+        (record.ratingRounds?.length ?? 0) >= 100
+      )
+        throw new RequestError(429, "rate_limited");
+      if (
+        record.ratingSettings?.enabled &&
+        now +
+          START_DELAY_MS +
+          5250 +
+          record.ratingSettings.delayMinutes * 60000 >=
+          record.expiresAt
+      )
+        throw new RequestError(409, "ending");
       if (now + START_DELAY_MS + 5250 >= record.expiresAt)
         throw new RequestError(409, "ending");
       record.session = {
@@ -389,6 +446,33 @@ export function mutate(
       };
       if (record.slack) delete record.slack.job;
       queueResult(record);
+      if (record.ratingSettings?.enabled) {
+        const draw = record.session.activeDraw!;
+        const identities = Object.fromEntries(
+          Object.entries(record.slack!.mapping).map(([user, id]) => [id, user]),
+        );
+        const winners = draw.spins
+          .filter((s) => identities[s.winnerId])
+          .map(
+            (s) =>
+              record.session.participants.find((p) => p.id === s.winnerId)!,
+          )
+          .map((p) => ({ id: p.id, name: p.name }));
+        if (winners.length)
+          (record.ratingRounds ??= []).push({
+            drawId: draw.id,
+            opensAt: new Date(
+              Date.parse(draw.startAt) +
+                Math.max(...draw.spins.map((s) => s.durationMs)) +
+                record.ratingSettings.delayMinutes * 60000,
+            ).toISOString(),
+            winners,
+            identities,
+            electorate: record.session.participants
+              .map((p) => identities[p.id])
+              .filter((id): id is string => !!id),
+          });
+      }
       delete record.scheduledDraw;
       clearReminder(record);
       record.draws++;

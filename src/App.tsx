@@ -15,6 +15,8 @@ import { SpectatorView } from "./components/SpectatorView";
 import { useBeerWheel } from "./hooks/useBeerWheel";
 import type { SessionController } from "./sessions/SessionController";
 import { sessionWinners } from "./domain/drawEngine";
+import { RatingSettingsControl } from "./components/RatingSettingsControl";
+import { RatingPrompt } from "./components/RatingPrompt";
 
 export default function App({ controller }: { controller: SessionController }) {
   const theme = useTheme();
@@ -66,6 +68,7 @@ export default function App({ controller }: { controller: SessionController }) {
         live={live}
         clockOffsetMs={clockOffsetMs}
         notice={notice}
+        onBeginRating={controller.beginRating?.bind(controller)}
       />
     );
   return (
@@ -210,6 +213,19 @@ export default function App({ controller }: { controller: SessionController }) {
             )}
           </section>
           <div className="sidebar">
+            {live?.role === "host" &&
+              live.slack?.enabled &&
+              controller.setRatings && (
+                <RatingSettingsControl
+                  value={live.ratings}
+                  disabled={
+                    !capabilities.canManageParticipants || pending || slackBusy
+                  }
+                  onChange={(settings) => {
+                    void run(() => controller.setRatings!(settings));
+                  }}
+                />
+              )}
             <ParticipantManager
               live={!!live}
               sourceControls={
@@ -259,7 +275,9 @@ export default function App({ controller }: { controller: SessionController }) {
                     !capabilities.canManageParticipants || pending || slackBusy
                   }
                   clockOffsetMs={clockOffsetMs}
-                  onSave={(at, share) => controller.setScheduledDraw!(at, share)}
+                  onSave={(at, share) =>
+                    controller.setScheduledDraw!(at, share)
+                  }
                 />
               )}
             <div className="how-it-works">
@@ -275,6 +293,15 @@ export default function App({ controller }: { controller: SessionController }) {
           </div>
         </div>
       </main>
+      {live?.ratings && controller.beginRating && (
+        <RatingPrompt
+          status={live.ratings}
+          offset={clockOffsetMs}
+          connected={live.status === "connected"}
+          drawing={spinning}
+          onBegin={(id) => controller.beginRating!(id)}
+        />
+      )}
       <footer>
         <span>{theme.footer}</span>
         <span>

@@ -201,6 +201,16 @@ Het derde rad: **wie haalt het water voor de afdeling?** Open `#/water` of kies 
 
 Een aan een kanaal gekoppeld Koffierad doet ook waterrondes: typ `/waterrad` (of `/waterrad 10`) in het kanaal of klik op **💧 Vraag een waterronde aan** op de vaste kanaalpagina. Het is dezelfde koppeling met dezelfde links; het vaste kanaalrad en de meekijklink kleuren automatisch mee met de ronde (blauw bij water, bruin bij koffie). Per kanaal loopt één ronde tegelijk, koffie of water, met samen maximaal 25 per 24 uur. Zie [waterrondes toevoegen](docs/slack-setup.md#waterrondes-toevoegen-waterrad).
 
+## Sterren voor de haler
+
+Bij een Slack-live-rad kun je **Geef de haler sterren** aanzetten voordat je draait. Bij het aanvragen van een kanaalronde kan dezelfde keuze worden gemaakt; de beheerpagina kan ook de standaard instellen voor toekomstige rondes, inclusief rondes via de bestaande slash commands. De optie staat aanvankelijk uit. Kies na hoeveel minuten ná de laatste onthulling de beoordeling opent: 1–30 minuten, standaard 3. De sessie moet dan nog geldig zijn.
+
+Als beoordelingen aanstaan, staan gedeeltelijk ingekleurde sterren onder iedere Slack-deelnemersnaam op het rad en in de deelnemerslijst. Het gemiddelde en het aantal beoordelingen blijven server-side bewaard per Slack-gebruiker, workspace en radtype: bier, koffie en water tellen apart. Wie nog geen beoordelingen heeft, krijgt lege sterren. Handmatige namen hebben geen Slack-identiteit en geen sterren. Beoordelingen veranderen de winkans niet.
+
+Na de wachttijd verschijnt een pop-up. Een speler bevestigt met Slack dat die aan deze trekking meedeed en geeft iedere Slack-winnaar 1–5 sterren in één formulier. Iedere deelnemende, volwaardige workspacegebruiker mag per trekking één formulier versturen, ook na verversen of opnieuw inloggen. Stemmen blijven mogelijk tot de sessie verloopt/wordt beëindigd. Een volgende trekking of reset verwijdert eerdere nog beschikbare beoordelingen niet; een sessie bewaart maximaal 100 beoordeelbare trekkingen. Oude rondes blijven bereikbaar via hun eigen sessielink als de kanaalpagina inmiddels een nieuwe ronde toont.
+
+De server bewaart scoretotaal, aantal en gemiddelde in SQLite. Een unieke stemclaim en alle scoreverhogingen worden samen transactioneel verwerkt; gelijktijdige stemmen overschrijven elkaar niet. De tijdelijke stemcontrole wordt uiterlijk bij de vaste Slack-toegangsdeadline gewist (zodat sessieverlenging geen tweede stem mogelijk maakt); de persoonsgemiddelden blijven bestaan. Er is geen openbare lijst of profielpagina. Zie de expliciete privacyreview in [SECURITY.md](SECURITY.md#persistent-ratings--reviewed-exception-2026-10-05). Backenddeploy vereist de nieuwe `RATINGS` binding en migratie `v3`; bestaande Slack-configuratie en scopes volstaan. Lokale handmatige raden werken zelfstandig zoals voorheen.
+
 ## Linkvoorbeelden
 
 De statische HTML bevat Open Graph- en Twitter Card-metadata met een vaste publieke afbeelding: `public/social-preview.png` (1730 × 909). Alle fragmentroutes, inclusief live- en koffielinks, gebruiken dezelfde Bierrad-preview. De afbeelding bevat geen deelnemers, uitslagen of toegangscodes en vereist geen backendverzoek. De bestaande privacy-meta en CSP blijven behouden.

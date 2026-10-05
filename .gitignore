@@ -10,3 +10,5 @@ worker-dist/
 *.cpuprofile
 
 .private-slack/
+/.npm-cache/
+/.qa/

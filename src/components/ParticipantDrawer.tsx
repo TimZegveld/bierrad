@@ -2,6 +2,7 @@ import { useId, useState } from "react";
 import { useTheme } from "../Theme";
 import type { Participant } from "../domain/models";
 import { countLabel } from "../domain/presentation";
+import { RatingStars } from "./RatingStars";
 /** The names are already on the wheels; the list stays one tap away. */
 export function ParticipantDrawer({
   people,
@@ -31,7 +32,12 @@ export function ParticipantDrawer({
           <h2>De {theme.crew}</h2>
           <ul>
             {people.map((person) => (
-              <li key={person.id}>{person.name}</li>
+              <li key={person.id}>
+                <span>{person.name}</span>
+                {person.rating && (
+                  <RatingStars rating={person.rating} compact />
+                )}
+              </li>
             ))}
           </ul>
         </div>

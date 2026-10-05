@@ -2,6 +2,7 @@ import { useTheme } from "../Theme";
 import type { BeerWheelSession } from "../domain/models";
 import { wheelCount, wheelParticipants } from "../domain/drawEngine";
 import { BeerWheel } from "./BeerWheel";
+import { RatingStars } from "./RatingStars";
 export function WheelGrid({ session }: { session: BeerWheelSession }) {
   const theme = useTheme();
   const people = wheelParticipants(session);
@@ -36,6 +37,9 @@ export function WheelGrid({ session }: { session: BeerWheelSession }) {
               {winner ? (
                 <>
                   <span>{theme.winnerIcon}</span> <strong>{winner.name}</strong>
+                  {winner.rating && (
+                    <RatingStars rating={winner.rating} compact />
+                  )}
                 </>
               ) : (
                 <span>

@@ -8,6 +8,7 @@ import {
 } from "../shared/variant";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import App from "./App";
+import { RatingPage } from "./components/RatingPage";
 import { LocalSessionController } from "./sessions/LocalSessionController";
 import {
   RemoteSessionController,
@@ -36,6 +37,20 @@ export function SessionRoot() {
     window.addEventListener("hashchange", change);
     return () => window.removeEventListener("hashchange", change);
   }, []);
+  const rating = /^#\/rate\/([a-f0-9]{32}\.[a-f0-9]{64})$/.exec(hash);
+  const ratingFailure =
+    /^#\/rate-error\/(beer|coffee|water)\/(denied|forbidden|expired|unavailable|busy)$/.exec(
+      hash,
+    );
+  if (rating || ratingFailure)
+    return (
+      <RatingPage
+        key={hash}
+        capability={rating?.[1]}
+        variant={ratingFailure?.[1] as WheelVariant | undefined}
+        failure={ratingFailure?.[2]}
+      />
+    );
   const channel = parseChannelRoute(hash);
   if (channel)
     return (

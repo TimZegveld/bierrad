@@ -17,6 +17,7 @@ export class LoginError extends Error {
 }
 interface Pending {
   variant: WheelVariant;
+  rating?: { locator: string; drawId: string };
   /** Set when the login binds a Koffierad to this channel instead of starting a session. */
   channelId?: string;
   state: string;
@@ -37,17 +38,27 @@ export function parseLoginCookie(
   // Duplicates are ambiguous; fail closed.
   if (values.length !== 1) return;
   const match =
-    /^([a-z]+|channel-[CG][A-Z0-9]{8,20})\.([a-f0-9]{64})\.([a-f0-9]{64})\.(\d{13})$/.exec(
+    /^([a-z]+|channel-[CG][A-Z0-9]{8,20}|rating-(?:beer|coffee|water)-[a-f0-9]{32}-[a-f0-9-]{36})\.([a-f0-9]{64})\.([a-f0-9]{64})\.(\d{13})$/.exec(
       values[0].slice(LOGIN_COOKIE.length + 1),
     );
   if (!match || Number(match[4]) <= now) return;
-  if (!match[1].startsWith("channel-") && !isWheelVariant(match[1])) return;
+  const rating =
+    /^rating-(beer|coffee|water)-([a-f0-9]{32})-([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/.exec(
+      match[1],
+    );
+  if (!rating && !match[1].startsWith("channel-") && !isWheelVariant(match[1]))
+    return;
   const channel = match[1].startsWith("channel-")
     ? match[1].slice(8)
     : undefined;
   return {
     // Channel binding is a Koffierad feature; it always uses the coffee app.
-    variant: channel ? "coffee" : (match[1] as WheelVariant),
+    variant: channel
+      ? "coffee"
+      : rating
+        ? (rating[1] as WheelVariant)
+        : (match[1] as WheelVariant),
+    ...(rating ? { rating: { locator: rating[2], drawId: rating[3] } } : {}),
     ...(channel ? { channelId: channel } : {}),
     state: match[2],
     nonce: match[3],
@@ -77,6 +88,7 @@ export function beginLogin(
   redirectUri: string,
   now = Date.now(),
   channelId?: string,
+  rating?: Pending["rating"],
 ): { location: string; cookie: string } {
   if (!loginConfigured(env)) throw new LoginError("unavailable");
   if (
@@ -99,7 +111,7 @@ export function beginLogin(
   return {
     location: location.href,
     cookie: loginCookie(
-      `${channelId ? `channel-${channelId}` : variant}.${state}.${nonce}.${now + LOGIN_TTL_MS}`,
+      `${rating ? `rating-${variant}-${rating.locator}-${rating.drawId}` : channelId ? `channel-${channelId}` : variant}.${state}.${nonce}.${now + LOGIN_TTL_MS}`,
       LOGIN_TTL_MS / 1000,
     ),
   };
@@ -132,7 +144,7 @@ export async function completeLogin(
   redirectUri: string,
   fetcher?: typeof fetch,
   now = Date.now(),
-): Promise<{ teamId: string; botUserId?: string }> {
+): Promise<{ teamId: string; botUserId?: string; userId?: string }> {
   const state = params.get("state");
   if (
     params.getAll("state").length !== 1 ||
@@ -204,7 +216,8 @@ export async function completeLogin(
       member.is_stranger === true
     )
       throw new LoginError("forbidden");
-    return bound;
+    // Only the separate rating flow receives a voter identity; ordinary login stays identity-free.
+    return pending.rating ? { ...bound, userId: id.sub } : bound;
   } finally {
     // The user token is never needed; revoke it best-effort.
     if (typeof token.access_token === "string")

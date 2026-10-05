@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
+  DEFAULT_RATING_SETTINGS,
+  type RatingSettings,
+} from "../../shared/ratings";
+import { RatingSettingsControl } from "./RatingSettingsControl";
+import {
   channelCopy,
   channelVariants,
   DEFAULT_ROUND_MINUTES,
@@ -33,7 +38,9 @@ const clock = new Intl.DateTimeFormat("nl-NL", {
 /** The name arrives with the first `/koffierad` or `/waterrad`; until then, no name. */
 function channelTitle(variant: ChannelVariant, name?: string) {
   const { icon, name: wheel } = themes[variant];
-  return name ? `${icon} ${wheel} van #${name}` : `${icon} ${wheel} van dit kanaal`;
+  return name
+    ? `${icon} ${wheel} van #${name}`
+    : `${icon} ${wheel} van dit kanaal`;
 }
 /** One binding serves coffee and water: the page follows the latest round. */
 function ChannelTheme({
@@ -53,7 +60,9 @@ function ChannelTheme({
     if (icon) icon.href = theme.favicon;
   }, [variant, title, theme]);
   return (
-    <VariantContext.Provider value={variant}>{children}</VariantContext.Provider>
+    <VariantContext.Provider value={variant}>
+      {children}
+    </VariantContext.Provider>
   );
 }
 function roundLabel(variant: ChannelVariant) {
@@ -66,7 +75,8 @@ const bindFailures: Record<ChannelBindFailure, string> = {
     "Alleen volwaardige leden van de workspace kunnen een Koffierad koppelen. Gasten en externe gebruikers kunnen wel meedoen.",
   expired:
     "Het inloggen duurde te lang of is in een ander tabblad gestart. Probeer opnieuw.",
-  unavailable: "Slack is nu niet bereikbaar of het Koffierad is nog niet ingesteld.",
+  unavailable:
+    "Slack is nu niet bereikbaar of het Koffierad is nog niet ingesteld.",
   busy: "Even rustig aan. Probeer over een minuut opnieuw.",
   not_in_channel:
     "Het Koffierad kon niet in dit kanaal posten. Nodig eerst de bot uit met /invite @Koffierad en probeer opnieuw.",
@@ -90,7 +100,10 @@ export function ChannelBindPage({ failure }: { failure?: ChannelBindFailure }) {
             Kopieer de link van het kanaal (rechtsklik op de kanaalnaam →{" "}
             <em>Kopiëren</em> → <em>Link kopiëren</em>) en plak hem hieronder.
           </li>
-          <li>Log in met Slack. Het Koffierad plaatst dan een bevestiging in het kanaal.</li>
+          <li>
+            Log in met Slack. Het Koffierad plaatst dan een bevestiging in het
+            kanaal.
+          </li>
         </ol>
         {failure && <p role="alert">{bindFailures[failure]}</p>}
         {api ? (
@@ -111,7 +124,9 @@ export function ChannelBindPage({ failure }: { failure?: ChannelBindFailure }) {
               spellCheck={false}
             />
             {input && !channel && (
-              <small role="status">Dit lijkt geen link naar een Slack-kanaal.</small>
+              <small role="status">
+                Dit lijkt geen link naar een Slack-kanaal.
+              </small>
             )}
             <button className="primary" type="submit" disabled={!channel}>
               Log in en koppel ☕
@@ -121,9 +136,9 @@ export function ChannelBindPage({ failure }: { failure?: ChannelBindFailure }) {
           <p>Koppelen is hier nog niet ingesteld.</p>
         )}
         <p className="helper">
-          Iedere afdeling kan een eigen kanaal koppelen. Wie de aanvraaglink heeft
-          of <code>/koffierad</code> of <code>/waterrad</code> typt in het kanaal,
-          kan een koffie- of waterronde starten.
+          Iedere afdeling kan een eigen kanaal koppelen. Wie de aanvraaglink
+          heeft of <code>/koffierad</code> of <code>/waterrad</code> typt in het
+          kanaal, kan een koffie- of waterronde starten.
         </p>
         <p>
           <a href="#/coffee">Liever handmatig draaien</a>
@@ -144,6 +159,7 @@ export function ChannelWheelPage({
   const api = configuredApiUrl();
   const [status, setStatus] = useState<ChannelStatus>();
   const [minutes, setMinutes] = useState<number>();
+  const [ratingSettings, setRatingSettings] = useState<RatingSettings>();
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState("");
   const [gone, setGone] = useState(false);
@@ -223,7 +239,13 @@ export function ChannelWheelPage({
     ...new Set([...ROUND_MINUTE_CHOICES, status.defaultMinutes]),
   ].sort((a, b) => a - b);
   const request = (kind: ChannelVariant) =>
-    void act({ type: "requestRound", minutes: chosen, variant: kind });
+    void act({
+      type: "requestRound",
+      minutes: chosen,
+      variant: kind,
+      ratingSettings:
+        ratingSettings ?? status.ratingSettings ?? DEFAULT_RATING_SETTINGS,
+    });
   const admin = status.role === "admin" && (
     <ChannelAdmin
       status={status}
@@ -282,6 +304,15 @@ export function ChannelWheelPage({
               </small>
             )}
           </div>
+          {!status.round.active && (
+            <div className="channel-rating-options">
+              <RatingSettingsControl
+                value={ratingSettings ?? status.ratingSettings}
+                disabled={pending}
+                onChange={setRatingSettings}
+              />
+            </div>
+          )}
           <ChannelLive
             key={status.round.spectatorCapability}
             apiUrl={api}
@@ -294,13 +325,15 @@ export function ChannelWheelPage({
   return (
     <ChannelTheme variant={variant}>
       <div className="unavailable channel-page">
-        <span className="friday-badge">{channelTitle(variant, status.channelName)}</span>
+        <span className="friday-badge">
+          {channelTitle(variant, status.channelName)}
+        </span>
         <h1>Tijd voor koffie of water?</h1>
         <section className="channel-request">
           <p>
-            Er komt een oproep in het Slack-kanaal. Wie op ☕ of 💧 klikt, doet mee.
-            Na de wachttijd draait het rad hier en kiest het één haler. Deze pagina
-            blijft altijd het rad van dit kanaal.
+            Er komt een oproep in het Slack-kanaal. Wie op ☕ of 💧 klikt, doet
+            mee. Na de wachttijd draait het rad hier en kiest het één haler.
+            Deze pagina blijft altijd het rad van dit kanaal.
           </p>
           <fieldset className="minute-choices">
             <legend>Het rad draait over</legend>
@@ -315,6 +348,11 @@ export function ChannelWheelPage({
               </button>
             ))}
           </fieldset>
+          <RatingSettingsControl
+            value={ratingSettings ?? status.ratingSettings}
+            disabled={pending}
+            onChange={setRatingSettings}
+          />
           {channelVariants.map((kind) => (
             <button
               key={kind}
@@ -323,11 +361,14 @@ export function ChannelWheelPage({
               disabled={pending || status.roundsLeft === 0}
               onClick={() => request(kind)}
             >
-              {themes[kind].icon} VRAAG EEN {channelCopy[kind].round.toUpperCase()} AAN
+              {themes[kind].icon} VRAAG EEN{" "}
+              {channelCopy[kind].round.toUpperCase()} AAN
             </button>
           ))}
           {status.roundsLeft === 0 && (
-            <p className="helper">Vandaag zijn er genoeg rondes geweest. Morgen weer!</p>
+            <p className="helper">
+              Vandaag zijn er genoeg rondes geweest. Morgen weer!
+            </p>
           )}
         </section>
         {notice && <p role="status">{notice}</p>}
@@ -338,7 +379,8 @@ export function ChannelWheelPage({
         </p>
         {status.viewerCapability && (
           <p className="helper">
-            Op een ander scherm meekijken, zonder rondes te kunnen starten? Typ daar{" "}
+            Op een ander scherm meekijken, zonder rondes te kunnen starten? Typ
+            daar{" "}
             <code className="channel-view-link">
               {channelViewLink(status.viewerCapability)}
             </code>
@@ -482,21 +524,23 @@ function ChannelAdmin({
     <section className="channel-admin">
       <h2>Beheer</h2>
       <p className="helper">
-        Bewaar deze beheerpagina zelf; deel alleen de kanaallink (het vaste rad). Een koppeling
-        verloopt na 90 dagen zonder rondes (nu tot{" "}
+        Bewaar deze beheerpagina zelf; deel alleen de kanaallink (het vaste
+        rad). Een koppeling verloopt na 90 dagen zonder rondes (nu tot{" "}
         {new Date(status.expiresAt).toLocaleDateString("nl-NL")}).
       </p>
       {requestCapability && (
         <button
           disabled={pending}
           onClick={() =>
-            void navigator.clipboard.writeText(channelLink(requestCapability)).then(
-              () =>
-                setNotice(
-                  "Link gekopieerd. Iedereen met deze link kan meekijken en een koffie- of waterronde starten.",
-                ),
-              () => setNotice("Kopiëren lukt niet. Sta klembordtoegang toe."),
-            )
+            void navigator.clipboard
+              .writeText(channelLink(requestCapability))
+              .then(
+                () =>
+                  setNotice(
+                    "Link gekopieerd. Iedereen met deze link kan meekijken en een koffie- of waterronde starten.",
+                  ),
+                () => setNotice("Kopiëren lukt niet. Sta klembordtoegang toe."),
+              )
           }
         >
           Kopieer kanaallink ⧉
@@ -504,7 +548,8 @@ function ChannelAdmin({
       )}
       {!status.viewerCapability && (
         <p className="helper">
-          Maak een nieuwe kanaallink om ook een meekijklink in woorden te krijgen.
+          Maak een nieuwe kanaallink om ook een meekijklink in woorden te
+          krijgen.
         </p>
       )}
       <label>
@@ -519,13 +564,26 @@ function ChannelAdmin({
             )
           }
         >
-          {Array.from({ length: MAX_ROUND_MINUTES }, (_, i) => i + 1).map((m) => (
-            <option key={m} value={m}>
-              {m} {m === 1 ? "minuut" : "minuten"}
-            </option>
-          ))}
+          {Array.from({ length: MAX_ROUND_MINUTES }, (_, i) => i + 1).map(
+            (m) => (
+              <option key={m} value={m}>
+                {m} {m === 1 ? "minuut" : "minuten"}
+              </option>
+            ),
+          )}
         </select>
       </label>
+      <RatingSettingsControl
+        value={status.ratingSettings}
+        defaults
+        disabled={pending}
+        onChange={(settings) => {
+          void act(
+            { type: "setRatingDefaults", settings },
+            "Standaardbeoordelingen opgeslagen.",
+          );
+        }}
+      />
       <button
         disabled={pending}
         onClick={() => {
@@ -534,7 +592,10 @@ function ChannelAdmin({
               "Een nieuwe kanaallink maken? De oude link en de oude meekijklink werken dan niet meer, ook niet als ze in Slack staan.",
             )
           )
-            void act({ type: "rotateRequestLink" }, "Nieuwe kanaallink gemaakt.");
+            void act(
+              { type: "rotateRequestLink" },
+              "Nieuwe kanaallink gemaakt.",
+            );
         }}
       >
         Nieuwe kanaallink

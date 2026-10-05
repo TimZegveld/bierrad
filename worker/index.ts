@@ -35,6 +35,7 @@ import {
 } from "./channel/slash";
 export { LiveSession } from "./live-session";
 export { ChannelWheel } from "./channel/wheel";
+export { Ratings } from "./ratings";
 
 type WorkerEnv = Env & SlackSecrets;
 /** Whether an offered capability opens the same session as the caller's. */
@@ -51,7 +52,7 @@ async function sameSession(
 async function createSession(
   env: WorkerEnv,
   variant: WheelVariant,
-  grant?: { hash: string; expiresAt: number },
+  grant?: { hash: string; expiresAt: number; teamId?: string },
 ): Promise<CreatedSession> {
   const spectator = randomWords(),
     locator = await wordLocator(spectator),
@@ -110,16 +111,86 @@ async function slackAuth(
   const clear = loginCookie("", 0);
   const fail = (reason: string) =>
     redirect(
-      binding
-        ? `${app.href}#/koffie-koppelen/${reason}`
-        : `${app.href}#/${variant === "beer" ? "" : `${variant}-`}slack/${reason}`,
+      pending?.rating || url.pathname === "/auth/slack/rating"
+        ? `${app.href}#/rate-error/${variant}/${reason}`
+        : binding
+          ? `${app.href}#/koffie-koppelen/${reason}`
+          : `${app.href}#/${variant === "beer" ? "" : `${variant}-`}slack/${reason}`,
       clear,
     );
   try {
-    if (request.method !== "GET") return json({ code: "invalid" }, 405);
+    const ratingStart = url.pathname === "/auth/slack/rating";
+    if (request.method !== (ratingStart ? "POST" : "GET"))
+      return json({ code: "invalid" }, 405);
     const ip = request.headers.get("CF-Connecting-IP") ?? "local";
     if (!(await env.REQUEST_LIMIT.limit({ key: ip })).success)
       return fail("busy");
+    if (ratingStart) {
+      if (
+        url.search ||
+        !env.ALLOWED_ORIGINS.split(",").includes(
+          request.headers.get("Origin") ?? "",
+        ) ||
+        !request.headers
+          .get("Content-Type")
+          ?.startsWith("application/x-www-form-urlencoded")
+      )
+        return fail("forbidden");
+      const reader = request.body?.getReader();
+      if (!reader) return fail("expired");
+      const chunks: Uint8Array[] = [];
+      let size = 0;
+      try {
+        while (true) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          size += chunk.value.length;
+          if (size > 2048) {
+            await reader.cancel();
+            return fail("expired");
+          }
+          chunks.push(chunk.value);
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      const bytes = new Uint8Array(size);
+      let at = 0;
+      for (const chunk of chunks) {
+        bytes.set(chunk, at);
+        at += chunk.length;
+      }
+      const form = new URLSearchParams(new TextDecoder().decode(bytes));
+      if (
+        [...form.keys()].length !== 2 ||
+        form.getAll("capability").length !== 1 ||
+        form.getAll("drawId").length !== 1
+      )
+        return fail("expired");
+      const cap = parseCapability(form.get("capability"));
+      const drawId = form.get("drawId")!;
+      if (
+        !cap ||
+        !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(
+          drawId,
+        )
+      )
+        return fail("expired");
+      const locator = await capabilityLocator(cap);
+      variant = await env.SESSIONS.getByName(locator).ratingLogin(
+        cap.secret,
+        drawId,
+      );
+      const login = beginLogin(
+        slackEnvironment(env, variant),
+        variant,
+        callback,
+        Date.now(),
+        undefined,
+        { locator, drawId },
+      );
+      return redirect(login.location, login.cookie);
+    }
     if (start || bindStart) {
       if (url.search) return fail("expired");
       const login = beginLogin(
@@ -135,13 +206,24 @@ async function slackAuth(
     if (!pending) return fail("expired");
     variant = pending.variant;
     // Before any Slack call: failed attempts also spend the creation budget.
-    if (!(await creationAllowed(env, ip))) return fail("busy");
+    if (!pending.rating && !(await creationAllowed(env, ip)))
+      return fail("busy");
     const workspace = await completeLogin(
       slackEnvironment(env, variant),
       pending,
       url.searchParams,
       callback,
     );
+    if (pending.rating) {
+      if (!workspace.userId) return fail("forbidden");
+      const secret = await env.SESSIONS.getByName(
+        pending.rating.locator,
+      ).ratingGrant(pending.rating.drawId, workspace.teamId, workspace.userId);
+      return redirect(
+        `${app.href}#/rate/${pending.rating.locator}.${secret}`,
+        clear,
+      );
+    }
     if (pending.channelId) {
       const locator = await channelLocator(pending.channelId);
       const admin = randomHex(),
@@ -180,13 +262,22 @@ async function slackAuth(
     const created = await createSession(env, variant, {
       hash: LOGIN_GRANT,
       expiresAt: Date.now() + LOGIN_CEILING_MS,
+      teamId: workspace.teamId,
     });
     return redirect(
       `${app.href}#/host/${created.hostCapability}/${created.spectatorCapability}`,
       clear,
     );
   } catch (error) {
-    return fail(error instanceof LoginError ? error.reason : "unavailable");
+    return fail(
+      error instanceof LoginError
+        ? error.reason
+        : pending?.rating &&
+            error instanceof Error &&
+            error.message === "forbidden"
+          ? "forbidden"
+          : "unavailable",
+    );
   }
 }
 
@@ -230,7 +321,9 @@ async function slashCommand(
       !(await env.CREATION_LIMIT.limit({ key })).success ||
       !(await env.CREATION_GLOBAL.limit({ key: "creation" })).success
     )
-      return ephemeral(`${icon} Even rustig aan. Probeer het over een minuut opnieuw.`);
+      return ephemeral(
+        `${icon} Even rustig aan. Probeer het over een minuut opnieuw.`,
+      );
     // Coffee and water share the channel's one binding and its round limits.
     const work = env.CHANNELS.getByName(
       await channelLocator(command.channelId),
@@ -239,7 +332,8 @@ async function slashCommand(
     ctx.waitUntil(work.catch(() => undefined));
     const reply = await Promise.race([
       work.catch(
-        () => `${icon} Het Koffierad is nu niet bereikbaar. Probeer het zo opnieuw.`,
+        () =>
+          `${icon} Het Koffierad is nu niet bereikbaar. Probeer het zo opnieuw.`,
       ),
       new Promise<string>((resolve) =>
         setTimeout(
@@ -252,7 +346,9 @@ async function slashCommand(
       ),
     ]);
     // An empty 200 shows nothing in Slack: the call in the channel says enough.
-    return reply === null ? new Response(null, { status: 200 }) : ephemeral(reply);
+    return reply === null
+      ? new Response(null, { status: 200 })
+      : ephemeral(reply);
   } catch {
     return json({ code: "invalid" }, 400);
   }
@@ -303,6 +399,18 @@ export default {
               ? body.variant
               : "beer";
           response = json(await createSession(env, variant), 201);
+        } else if (url.pathname === "/api/rating") {
+          if (!["GET", "POST"].includes(request.method))
+            throw new RequestError(405, "invalid");
+          const cap = parseCapability(
+            request.headers.get("Authorization")?.replace(/^Bearer /, "") ??
+              null,
+          );
+          if (!cap?.locator) throw new RequestError(404, "unavailable");
+          response = await env.SESSIONS.getByName(cap.locator).ratingAccess(
+            cap.secret,
+            request.method === "POST" ? await readBody(request) : null,
+          );
         } else if (url.pathname === "/api/channel") {
           if (!["GET", "POST"].includes(request.method))
             throw new RequestError(405, "invalid");
@@ -313,7 +421,8 @@ export default {
           if (!capability) throw new RequestError(404, "unavailable");
           // Word links only watch a channel: no commands, ever.
           if (!capability.locator) {
-            if (request.method !== "GET") throw new RequestError(405, "invalid");
+            if (request.method !== "GET")
+              throw new RequestError(405, "invalid");
             response = await env.CHANNELS.getByName(
               await channelViewerLocator(capability.secret),
             ).view(capability.secret);

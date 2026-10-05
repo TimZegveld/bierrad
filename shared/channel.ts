@@ -44,6 +44,7 @@ export interface ChannelRound {
   active: boolean;
 }
 export interface ChannelStatus {
+  ratingSettings?: import("./ratings").RatingSettings;
   role: "admin" | "requester";
   /** The theme to show: the latest round's, coffee before any round. */
   variant?: ChannelVariant;
@@ -58,7 +59,13 @@ export interface ChannelStatus {
 }
 export type ChannelCommand =
   /** Without a variant the round is coffee, as before water existed. */
-  | { type: "requestRound"; minutes: number; variant?: ChannelVariant }
+  | {
+      type: "requestRound";
+      minutes: number;
+      variant?: ChannelVariant;
+      ratingSettings?: import("./ratings").RatingSettings;
+    }
+  | { type: "setRatingDefaults"; settings: import("./ratings").RatingSettings }
   | { type: "setDefaultMinutes"; minutes: number }
   | { type: "rotateRequestLink" }
   | { type: "unbind" };
@@ -104,9 +111,10 @@ export function parseChannelInput(raw: string): string | null {
       !/^[a-z0-9][a-z0-9-]*\.slack\.com$/.test(url.hostname)
     )
       return null;
-    const match = /^\/(?:archives|client\/T[A-Z0-9]{8,20})\/([CG][A-Z0-9]{8,20})(?:\/|$)/.exec(
-      url.pathname,
-    );
+    const match =
+      /^\/(?:archives|client\/T[A-Z0-9]{8,20})\/([CG][A-Z0-9]{8,20})(?:\/|$)/.exec(
+        url.pathname,
+      );
     return match ? match[1] : null;
   } catch {
     return null;

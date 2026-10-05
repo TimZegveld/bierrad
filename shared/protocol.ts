@@ -45,8 +45,10 @@ export interface PublicBeerWheelSession {
   revision: number;
   slack?: SlackHostStatus;
   scheduledDraw?: ScheduledDraw;
+  ratings?: import("./ratings").RatingStatus;
 }
 export type HostCommand =
+  | { type: "setRatings"; settings: import("./ratings").RatingSettings }
   | { type: "setParticipants"; names: string[] }
   | { type: "setWinnerCount"; count: number }
   | { type: "startDraw" }

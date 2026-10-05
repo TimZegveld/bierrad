@@ -25,6 +25,7 @@ import { TimeLeft } from "./TimeLeft";
 import { ParticipantDrawer } from "./ParticipantDrawer";
 import { SpectatorResult } from "./SpectatorResult";
 import { Confetti } from "./Confetti";
+import { RatingPrompt } from "./RatingPrompt";
 /** Only celebrate when the reveal was actually watched, not on a later reload. */
 const CELEBRATION_WINDOW_MS = 15000;
 /** Read-only presentation for screens and office TVs; never issues commands. */
@@ -33,11 +34,13 @@ export function SpectatorView({
   live,
   clockOffsetMs,
   notice,
+  onBeginRating,
 }: {
   session: BeerWheelSession;
   live: LiveInfo;
   clockOffsetMs?: number;
   notice: string;
+  onBeginRating?: (drawId: string) => void;
 }) {
   const theme = useTheme();
   const offset = clockOffsetMs ?? 0;
@@ -60,12 +63,7 @@ export function SpectatorView({
     const measure = () => {
       const gap = Math.min(56, Math.max(18, window.innerWidth * 0.03));
       setColumns(
-        bestWheelColumns(
-          count,
-          element.clientWidth,
-          element.clientHeight,
-          gap,
-        ),
+        bestWheelColumns(count, element.clientWidth, element.clientHeight, gap),
       );
     };
     measure();
@@ -164,6 +162,15 @@ export function SpectatorView({
         ) : null}
       </div>
       {celebrate && <Confetti key={draw.id} />}
+      {live.ratings && onBeginRating && (
+        <RatingPrompt
+          status={live.ratings}
+          offset={offset}
+          connected={live.status === "connected"}
+          drawing={show}
+          onBegin={onBeginRating}
+        />
+      )}
     </div>
   );
 }

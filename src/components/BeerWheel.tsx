@@ -2,6 +2,7 @@ import { useTheme } from "../Theme";
 import type { Participant, SpinInstruction } from "../domain/models";
 import { useWheelAnimation } from "../hooks/useWheelAnimation";
 import { idleRotation } from "../domain/spin";
+import { StarGlyphs } from "./RatingStars";
 export const colors = [
   "#f8bd37",
   "#eb794e",
@@ -25,7 +26,7 @@ export function BeerWheel({
 }) {
   const theme = useTheme();
   const palette = theme.wheelColors ?? colors;
-  const displayed = people.length
+  const displayed: readonly Participant[] = people.length
     ? people
     : Array.from({ length: 8 }, (_, i) => ({ id: String(i), name: "" }));
   // Matches the first spin's startRotation, so the wheel never jumps when it starts.
@@ -34,6 +35,10 @@ export function BeerWheel({
     idleRotation(wheelIndex, displayed.length),
   );
   const step = 360 / displayed.length;
+  // Keep each name + star row within the tangential space of dense segments.
+  const ratedFontSize = Math.min(17, 430 / displayed.length);
+  const starHeight = Math.min(12, 180 / displayed.length);
+  const ratedNameY = 210 - (starHeight + 2) / 2;
   const point = (angle: number, radius = 194) => [
     210 + radius * Math.sin((angle * Math.PI) / 180),
     210 - radius * Math.cos((angle * Math.PI) / 180),
@@ -66,23 +71,47 @@ export function BeerWheel({
                 />
               )}
               <g transform={`rotate(${(i + 0.5) * step - 90} 210 210)`}>
-                <text
-                  x="333"
-                  y="210"
-                  dominantBaseline="middle"
+                <g
                   transform={
                     (i + 0.5) * step > 180 ? "rotate(180 333 210)" : undefined
                   }
-                  textLength={p.name.length > 13 ? 132 : undefined}
-                  lengthAdjust="spacingAndGlyphs"
-                  textAnchor="middle"
-                  fill="#292820"
-                  fontSize={people.length > 24 ? 14 : 19}
-                  fontWeight="750"
                 >
-                  <title>{p.name}</title>
-                  {p.name.length > 18 ? p.name.slice(0, 17) + "…" : p.name}
-                </text>
+                  <text
+                    x="333"
+                    y={p.rating ? ratedNameY : 210}
+                    dominantBaseline="middle"
+                    textLength={p.name.length > 13 ? 132 : undefined}
+                    lengthAdjust="spacingAndGlyphs"
+                    textAnchor="middle"
+                    fill="#292820"
+                    fontSize={
+                      p.rating ? ratedFontSize : people.length > 24 ? 14 : 19
+                    }
+                    fontWeight="750"
+                  >
+                    <title>{p.name}</title>
+                    {p.name.length > 18 ? p.name.slice(0, 17) + "…" : p.name}
+                  </text>
+                  {p.rating && (
+                    <svg
+                      x="299"
+                      y={ratedNameY + ratedFontSize / 2 + 1}
+                      width="68"
+                      height={starHeight}
+                      viewBox="0 0 108 20"
+                      className="wheel-rating"
+                    >
+                      <title>
+                        {p.rating.count
+                          ? `${p.rating.average.toLocaleString("nl-NL", { maximumFractionDigits: 1 })} van 5 sterren · ${p.rating.count} beoordelingen`
+                          : "Nog geen beoordelingen"}
+                      </title>
+                      <StarGlyphs
+                        value={p.rating.count ? p.rating.average : 0}
+                      />
+                    </svg>
+                  )}
+                </g>
               </g>
             </g>
           );

@@ -461,6 +461,12 @@ Optionele Slack-import en threadresultaten bouwen hierop voort, via beveiligde t
 
 ---
 
+## Sterren voor de haler — uitbreiding 2026-10-05
+
+Een Slack-rad kan optioneel beoordelingen gebruiken. Na een instelbare wachttijd vanaf de laatste onthulling (standaard drie minuten) krijgen spelers een uitnodiging om de haler 1–5 sterren te geven. Alleen geverifieerde Slack-deelnemers van die trekking stemmen, één formulier per speler per trekking. Bij meerdere Slack-winnaars krijgt ieder een eigen sterrenkeuze. De score is speelse waardering voor een rondje drinken, geen personeelsbeoordeling.
+
+Gemiddelde en aantal blijven server-side bewaard per Slack-identiteit, workspace en radtype. Gedeeltelijk ingevulde sterren verschijnen onder de deelnemersnamen wanneer beoordelingen aanstaan. De scores beïnvloeden nooit de selectie of de animatie. Standalone blijft zonder backend en zonder persoonsbeoordelingen werken. Tijdelijke stemrechten en deelnemersgegevens verdwijnen bij sessie-expiry; alleen de expliciet aangevraagde scoretotalen blijven behouden, onder de afzonderlijke privacyreview in SECURITY.md.
+
 # North Star
 
 Wanneer collega's vrijdag vragen:

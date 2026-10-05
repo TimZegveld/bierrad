@@ -9,6 +9,7 @@ export type ConnectionStatus =
   | "reconnecting"
   | "unavailable";
 export interface LiveInfo {
+  ratings?: import("../../shared/ratings").RatingStatus;
   role: import("../domain/models").ClientRole;
   status: ConnectionStatus;
   expiresAt?: string;
@@ -24,6 +25,10 @@ export interface SessionSnapshot {
 }
 /** Stable immutable snapshots. Remote implementations publish server snapshots. */
 export interface SessionController {
+  setRatings?(
+    settings: import("../../shared/ratings").RatingSettings,
+  ): Promise<void>;
+  beginRating?(drawId: string): void;
   getSnapshot(): SessionSnapshot;
   subscribe(listener: () => void): () => void;
   setParticipants(participants: readonly Participant[]): Promise<void>;

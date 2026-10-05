@@ -2,6 +2,7 @@ import type { WheelVariant } from "../../shared/variant";
 export interface Participant {
   readonly id: string;
   readonly name: string;
+  readonly rating?: import("../../shared/ratings").RatingSummary;
 }
 export type DrawState =
   | "setup"

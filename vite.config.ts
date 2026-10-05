@@ -30,7 +30,7 @@ export default defineConfig(({ mode, command }) => {
     "default-src 'self'",
     "base-uri 'self'",
     "object-src 'none'",
-    "form-action 'none'",
+    `form-action 'self' ${backend ? new URL(api!).origin : ""} https://slack.com`,
     `script-src 'self'${dev ? " 'unsafe-inline'" : ""}`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",

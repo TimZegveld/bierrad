@@ -262,6 +262,7 @@ test(
             durableObjects: {
               SESSIONS: { className: "TestSession", useSQLite: true },
               CHANNELS: { className: "TestChannel", useSQLite: true },
+              RATINGS: { className: "Ratings", useSQLite: true },
             },
             bindings: {
               ALLOWED_ORIGINS: "http://127.0.0.1:5173",
@@ -590,6 +591,24 @@ test(
       assert.equal(posts.length, count);
 
       // Admin: default minutes, rotation invalidates the old request link, unbind removes everything.
+      const ratingDefaults = { enabled: true, delayMinutes: 7 };
+      assert.equal((await api(requester, { type: "setRatingDefaults", settings: ratingDefaults })).status, 403);
+      assert.equal((await api(admin, { type: "setRatingDefaults", settings: { enabled: true, delayMinutes: 0 } })).status, 400);
+      assert.equal((await api(requester, { type: "requestRound", minutes: 2, ratingSettings: { enabled: true, delayMinutes: 31 } })).status, 400);
+      const savedDefaults = (await status(admin, { type: "setRatingDefaults", settings: ratingDefaults })) as { status: { ratingSettings: object } };
+      assert.deepEqual(savedDefaults.status.ratingSettings, ratingDefaults);
+      const ratedRound = (await status(requester, { type: "requestRound", minutes: 2 })) as { status: { round: { spectatorCapability: string; startAt: string } } };
+      const ratedSession = sessions.get(sessions.idFromName(await wordLocator(ratedRound.status.round.spectatorCapability))) as unknown as { stored(): Promise<string> };
+      const ratedStored = JSON.parse(await ratedSession.stored());
+      assert.deepEqual(ratedStored.ratingSettings, ratingDefaults);
+      assert.equal(ratedStored.slack.teamId, "T00000001");
+      const ratedBinding = JSON.parse((await channel.stored())!);
+      assert.equal(ratedBinding.round.endsAt, Date.parse(ratedRound.status.round.startAt) + 3600000);
+      await channel.finishRound();
+      const plainRound = (await status(requester, { type: "requestRound", minutes: 2, ratingSettings: { enabled: false, delayMinutes: 3 } })) as { status: { round: { spectatorCapability: string } } };
+      const plainSession = sessions.get(sessions.idFromName(await wordLocator(plainRound.status.round.spectatorCapability))) as unknown as { stored(): Promise<string> };
+      assert.equal(JSON.parse(await plainSession.stored()).ratingSettings.enabled, false);
+      await channel.finishRound();
       assert.equal(((await status(admin, { type: "setDefaultMinutes", minutes: 10 })) as { status: { defaultMinutes: number } }).status.defaultMinutes, 10);
       const rotated = (await status(admin, { type: "rotateRequestLink" })) as { requestCapability: string };
       assert.equal((await api(requester)).status, 404);

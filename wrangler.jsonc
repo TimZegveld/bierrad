@@ -13,11 +13,13 @@
     "bindings": [
       { "name": "SESSIONS", "class_name": "LiveSession" },
       { "name": "CHANNELS", "class_name": "ChannelWheel" },
+      { "name": "RATINGS", "class_name": "Ratings" },
     ],
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["LiveSession"] },
     { "tag": "v2", "new_sqlite_classes": ["ChannelWheel"] },
+    { "tag": "v3", "new_sqlite_classes": ["Ratings"] },
   ],
   "ratelimits": [
     {
@@ -44,9 +46,10 @@
       },
       "durable_objects": {
         "bindings": [
-      { "name": "SESSIONS", "class_name": "LiveSession" },
-      { "name": "CHANNELS", "class_name": "ChannelWheel" },
-    ],
+          { "name": "SESSIONS", "class_name": "LiveSession" },
+          { "name": "CHANNELS", "class_name": "ChannelWheel" },
+          { "name": "RATINGS", "class_name": "Ratings" },
+        ],
       },
       "ratelimits": [
         {

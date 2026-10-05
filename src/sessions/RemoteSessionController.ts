@@ -88,6 +88,7 @@ export class RemoteSessionController implements SessionController {
   private expiresAt?: string;
   private slack?: PublicBeerWheelSession["slack"];
   private scheduledDraw?: PublicBeerWheelSession["scheduledDraw"];
+  private ratings?: PublicBeerWheelSession["ratings"];
   private connecting = false;
   private readonly fetcher: typeof fetch;
   constructor(private readonly options: RemoteOptions) {
@@ -125,6 +126,7 @@ export class RemoteSessionController implements SessionController {
         expiresAt: this.expiresAt,
         slack: this.slack,
         scheduledDraw: this.scheduledDraw,
+        ratings: this.ratings,
       },
     });
   }
@@ -151,6 +153,7 @@ export class RemoteSessionController implements SessionController {
     this.slack = this.options.role === "host" ? dto.slack : undefined;
     this.expiresAt = dto.expiresAt;
     this.scheduledDraw = dto.scheduledDraw;
+    this.ratings = dto.ratings;
     const oldDraw = this.snapshot.session.activeDraw;
     const session: BeerWheelSession = Object.freeze({
       id: "live",
@@ -211,6 +214,7 @@ export class RemoteSessionController implements SessionController {
     this.terminal = true;
     this.slack = undefined;
     this.scheduledDraw = undefined;
+    this.ratings = undefined;
     clearTimeout(this.retry);
     clearTimeout(this.expiry);
     clearInterval(this.heartbeat);
@@ -250,6 +254,10 @@ export class RemoteSessionController implements SessionController {
         code?: string;
       };
       const slackMessages: Record<string, string> = {
+        ratings_slack_required:
+          "Laad Slack-deelnemers om sterren te gebruiken, of zet beoordelingen uit voor deze trekking.",
+        ending:
+          "Deze sessie loopt te snel af voor deze trekking en de gekozen beoordelingswachttijd. Start een nieuwe sessie.",
         invalid_schedule:
           "Kies een toekomstig tijdstip binnen de komende 30 dagen.",
         schedule_access_expires:
@@ -427,6 +435,34 @@ export class RemoteSessionController implements SessionController {
   }
   setWinnerCount(count: number) {
     return this.command({ type: "setWinnerCount", count });
+  }
+  setRatings(settings: import("../../shared/ratings").RatingSettings) {
+    return this.command({ type: "setRatings", settings });
+  }
+  beginRating(drawId: string) {
+    if (
+      this.terminal ||
+      this.disposed ||
+      this.snapshot.live?.status !== "connected"
+    )
+      throw new Error("Verbind eerst opnieuw om te beoordelen.");
+    // Top-level POST allows a host-only OAuth cookie without third-party cookies or URL credentials.
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = endpoint(this.options.apiUrl, "/auth/slack/rating");
+    for (const [name, value] of Object.entries({
+      capability: this.options.capability,
+      drawId,
+    })) {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = name;
+      input.value = value;
+      form.append(input);
+    }
+    document.body.append(form);
+    form.submit();
+    form.remove();
   }
   get canShareSpectatorLink() {
     return this.options.role === "host" && !!this.options.spectatorCapability;

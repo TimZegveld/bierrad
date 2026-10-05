@@ -45,6 +45,7 @@ export interface SlackReminder {
   retryAt?: number;
 }
 export interface SlackState {
+  teamId?: string;
   grantHash: string;
   grantExpiresAt?: number;
   source?: SlackSource;

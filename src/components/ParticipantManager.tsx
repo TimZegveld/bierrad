@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { Participant } from "../domain/models";
 import { addParticipant, removeParticipant } from "../utils/participants";
 import { colors } from "./BeerWheel";
+import { RatingStars } from "./RatingStars";
 export function ParticipantManager({
   people,
   live = false,
@@ -83,7 +84,10 @@ export function ParticipantManager({
             >
               {p.name.slice(0, 1).toUpperCase()}
             </span>
-            <span>{p.name}</span>
+            <span className="participant-name">
+              {p.name}
+              {p.rating && <RatingStars rating={p.rating} compact />}
+            </span>
             {!readOnly && (
               <button
                 aria-label={`${p.name} verwijderen`}

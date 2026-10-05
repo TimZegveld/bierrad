@@ -38,6 +38,8 @@ import {
   type StoredSession,
 } from "./session";
 import { frontend, json } from "./http";
+import { ratingLocator } from "./rating-utils";
+import { type RatingSettings, type RatingBallot } from "../shared/ratings";
 import type { ClientRole } from "../src/domain/models";
 import type { ServerToClientMessage } from "../shared/protocol";
 
@@ -68,7 +70,7 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
   async initialize(
     hostHash: string,
     spectatorHash: string,
-    grant?: { hash: string; expiresAt: number },
+    grant?: { hash: string; expiresAt: number; teamId?: string },
     variant: WheelVariant = "beer",
   ): Promise<string> {
     if (this.read()) throw new Error("unavailable");
@@ -81,6 +83,7 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
         grantHash: grant.hash,
         grantExpiresAt: grant.expiresAt,
         mapping: {},
+        ...(grant.teamId ? { teamId: grant.teamId } : {}),
       };
       record.expiresAt = Math.min(record.expiresAt, grant.expiresAt);
     }
@@ -98,6 +101,8 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
     startAt: number,
     excludeUserIds: string[],
     variant: ChannelVariant = "coffee",
+    ratingSettings?: RatingSettings,
+    teamId?: string,
   ): Promise<void> {
     const hostHash = await hashSecret(randomHex());
     if (this.read()) throw new Error("unavailable");
@@ -122,7 +127,9 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
       excludeUserIds: [...excludeUserIds],
       // The first read waits a minute: right after posting only the bot reacted.
       nextImportAt: now + 60000,
+      ...(teamId ? { teamId } : {}),
     };
+    if (ratingSettings) record.ratingSettings = { ...ratingSettings };
     this.save(record);
     await this.ctx.storage.setAlarm(nextDeadline(record));
   }
@@ -245,6 +252,39 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
       const parsed = parseCapability(offered ?? null);
       const offeredHash = parsed ? await hashSecret(parsed.secret) : undefined;
       const role = await this.authenticate(secret);
+      if (
+        command &&
+        typeof command === "object" &&
+        "type" in command &&
+        command.type === "setRatings"
+      ) {
+        const before = this.read();
+        if (
+          role !== "host" ||
+          !before ||
+          !slackAllowed(
+            before.slack?.grantHash,
+            slackEnvironment(this.env, before.variant),
+          )
+        )
+          throw new RequestError(403, "ratings_slack_required");
+        // Legacy sessions learn their workspace only after an authenticated host opts in.
+        if (!before.slack!.teamId) {
+          const workspace = await new SlackApiClient(
+            slackEnvironment(this.env, before.variant).SLACK_BOT_TOKEN!,
+          ).call("auth.test", {});
+          const latest = this.read();
+          if (
+            !latest ||
+            Date.now() >= latest.expiresAt ||
+            typeof workspace.team_id !== "string" ||
+            !/^T[A-Z0-9]{8,20}$/.test(workspace.team_id)
+          )
+            throw new RequestError(404, "unavailable");
+          latest.slack!.teamId = workspace.team_id;
+          this.save(latest);
+        }
+      }
       // Re-read after the await, protecting concurrent requests/expiry.
       const record = this.read();
       if (!record || Date.now() >= record.expiresAt)
@@ -301,6 +341,26 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
             : undefined,
         );
         this.save(record);
+      }
+      if (
+        command &&
+        typeof command === "object" &&
+        "type" in command &&
+        ["setRatings", "setParticipants", "startDraw", "reset"].includes(
+          String(command.type),
+        )
+      ) {
+        await this.refreshRatings();
+        const latest = this.read();
+        if (!latest || Date.now() >= latest.expiresAt)
+          throw new RequestError(404, "unavailable");
+        this.broadcast(latest);
+        await this.ctx.storage.setAlarm(nextDeadline(latest));
+        if (Date.now() >= latest.expiresAt) {
+          await this.expire();
+          throw new RequestError(404, "unavailable");
+        }
+        return json(this.message(latest, role));
       }
       if (Date.now() >= record.expiresAt) {
         await this.expire();
@@ -720,8 +780,12 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
       current.revision++;
       this.save(current);
       this.broadcast(current);
-      const result = this.message(current, role);
-      await this.ctx.storage.setAlarm(nextDeadline(current));
+      await this.refreshRatings();
+      const latest = this.read();
+      if (!latest || Date.now() >= latest.expiresAt)
+        throw new RequestError(404, "unavailable");
+      const result = this.message(latest, role);
+      await this.ctx.storage.setAlarm(nextDeadline(latest));
       if (Date.now() >= current.expiresAt)
         throw new RequestError(404, "unavailable");
       return json(result);
@@ -758,6 +822,177 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
           : 400,
       );
     }
+  }
+  private ratingRecord() {
+    const record = this.read();
+    if (
+      !record ||
+      Date.now() >= record.expiresAt ||
+      !record.slack?.teamId ||
+      !slackAllowed(
+        record.slack.grantHash,
+        slackEnvironment(this.env, record.variant),
+      )
+    )
+      throw new RequestError(404, "unavailable");
+    return record;
+  }
+  /** Authorized navigation into OAuth; the session capability travels only in a POST body. */
+  async ratingLogin(secret: string, drawId: string): Promise<WheelVariant> {
+    await this.authenticate(secret);
+    const record = this.ratingRecord();
+    const round = record.ratingRounds?.find((r) => r.drawId === drawId);
+    if (!round || Date.now() < Date.parse(round.opensAt))
+      throw new RequestError(409, "not_ready");
+    return record.variant ?? "beer";
+  }
+  /** Called only after the Worker verifies the OIDC identity and workspace. */
+  async ratingGrant(
+    drawId: string,
+    teamId: string,
+    userId: string,
+  ): Promise<string> {
+    const secret = randomHex();
+    const hash = await hashSecret(secret);
+    const record = this.ratingRecord();
+    const round = record.ratingRounds?.find((r) => r.drawId === drawId);
+    if (
+      teamId !== record.slack!.teamId ||
+      !round?.electorate.includes(userId) ||
+      Date.now() < Date.parse(round.opensAt)
+    )
+      throw new RequestError(403, "forbidden");
+    (record.ratingGrants ??= {})[`${drawId}:${userId}`] = { hash, drawId };
+    this.save(record);
+    return secret;
+  }
+  async ratingAccess(secret: string, input: unknown): Promise<Response> {
+    try {
+      const hash = await hashSecret(secret);
+      const record = this.ratingRecord();
+      const entry = Object.entries(record.ratingGrants ?? {}).find(
+        ([, grant]) => equalHash(grant.hash, hash),
+      );
+      if (!entry) throw new RequestError(404, "unavailable");
+      const [key, grant] = entry;
+      const voter = key.slice(grant.drawId.length + 1);
+      const round = record.ratingRounds?.find((r) => r.drawId === grant.drawId);
+      if (
+        !round ||
+        !round.electorate.includes(voter) ||
+        Date.now() < Date.parse(round.opensAt)
+      )
+        throw new RequestError(403, "forbidden");
+      const ballotId = await hashSecret(
+        `bierrad-ballot:${record.session.id}:${round.drawId}:${voter}`,
+      );
+      const store = this.env.RATINGS.getByName(
+        await ratingLocator(record.slack!.teamId!, record.variant ?? "beer"),
+      );
+      let submitted: boolean;
+      if (input !== null) {
+        if (
+          !input ||
+          typeof input !== "object" ||
+          Array.isArray(input) ||
+          Object.keys(input).length !== 1 ||
+          !("scores" in input) ||
+          !Array.isArray(input.scores) ||
+          input.scores.length !== round.winners.length
+        )
+          throw new RequestError(400, "invalid");
+        const ids = new Set<string>();
+        const votes = input.scores.map((score: unknown) => {
+          if (
+            !score ||
+            typeof score !== "object" ||
+            Object.keys(score).length !== 2 ||
+            !("winnerId" in score) ||
+            !("stars" in score) ||
+            typeof score.winnerId !== "string" ||
+            !round.winners.some((w) => w.id === score.winnerId) ||
+            ids.has(score.winnerId) ||
+            typeof score.stars !== "number" ||
+            !Number.isInteger(score.stars) ||
+            score.stars < 1 ||
+            score.stars > 5
+          )
+            throw new RequestError(400, "invalid");
+          ids.add(score.winnerId);
+          return {
+            person: round.identities[score.winnerId],
+            stars: score.stars,
+          };
+        });
+        // Recheck revocation after asynchronous hashing/RPC preparation.
+        const latest = this.ratingRecord();
+        if (latest.ratingGrants?.[key]?.hash !== hash)
+          throw new RequestError(404, "unavailable");
+        // A host may extend a still-valid session later. Keep the opaque claim
+        // through its fixed Slack ceiling so extension cannot reopen a used ballot.
+        await store.vote(
+          ballotId,
+          votes,
+          latest.expiresAt,
+          latest.slack!.grantExpiresAt ?? latest.expiresAt,
+        );
+        submitted = true; // Duplicate delivery is an idempotent success.
+        await this.refreshRatings();
+      } else submitted = await store.hasBallot(ballotId);
+      const latest = this.ratingRecord();
+      if (latest.ratingGrants?.[key]?.hash !== hash)
+        throw new RequestError(404, "unavailable");
+      return json({
+        variant: record.variant ?? "beer",
+        round: {
+          drawId: round.drawId,
+          opensAt: round.opensAt,
+          winners: round.winners.map((w) => ({ id: w.id, name: w.name })),
+        },
+        expiresAt: new Date(latest.expiresAt).toISOString(),
+        submitted,
+        serverNow: Date.now(),
+      } satisfies RatingBallot);
+    } catch (error) {
+      return json(
+        { code: error instanceof RequestError ? error.code : "unavailable" },
+        error instanceof RequestError ? error.status : 503,
+      );
+    }
+  }
+  private async refreshRatings() {
+    const before = this.read();
+    if (
+      !before?.ratingSettings?.enabled ||
+      !before.slack?.teamId ||
+      Date.now() >= before.expiresAt
+    )
+      return;
+    const mapping = { ...before.slack.mapping };
+    const summaries = await this.env.RATINGS.getByName(
+      await ratingLocator(before.slack.teamId, before.variant ?? "beer"),
+    ).summaries(Object.keys(mapping));
+    const latest = this.read();
+    if (
+      !latest?.ratingSettings?.enabled ||
+      Date.now() >= latest.expiresAt ||
+      latest.slack?.teamId !== before.slack.teamId
+    )
+      return;
+    const byParticipant = new Map(
+      Object.entries(mapping)
+        .filter(([user, id]) => latest.slack!.mapping[user] === id)
+        .map(([user, id]) => [id, summaries[user]]),
+    );
+    latest.session = {
+      ...latest.session,
+      participants: latest.session.participants.map((p) =>
+        byParticipant.has(p.id) ? { ...p, rating: byParticipant.get(p.id) } : p,
+      ),
+    };
+    latest.revision++;
+    this.save(latest);
+    this.broadcast(latest);
   }
   private async processSlackResult() {
     const record = this.read();

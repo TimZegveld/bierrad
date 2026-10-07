@@ -10,7 +10,12 @@ import {
   type JoinFailure,
 } from "../sessions/JoinClient";
 import App from "../App";
-import { ReviewBallotCard, ReviewJoin, ReviewThanks } from "./ReviewBallot";
+import {
+  ReviewBallotCard,
+  ReviewJoin,
+  ReviewThanks,
+  type ReviewDraft,
+} from "./ReviewBallot";
 
 function Themed({
   variant,
@@ -63,6 +68,7 @@ export function SessionJoinPage({ capability }: { capability: string }) {
   const [notice, setNotice] = useState("");
   const [pending, setPending] = useState(false);
   const [later, setLater] = useState<string>();
+  const [draft, setDraft] = useState<ReviewDraft>();
   const [live, setLive] = useState<RemoteSessionController>();
   useEffect(() => {
     if (!api) return;
@@ -206,9 +212,12 @@ export function SessionJoinPage({ capability }: { capability: string }) {
               key={ballot.drawId}
               ballot={ballot}
               variant={variant}
-              onSubmit={(submission) =>
-                run({ type: "review", drawId: ballot.drawId, ...submission })
-              }
+              draft={draft}
+              onDraftChange={setDraft}
+              onSubmit={async (submission) => {
+                await run({ type: "review", drawId: ballot.drawId, ...submission });
+                setDraft(undefined);
+              }}
               onLater={() => setLater(ballot.drawId)}
             />
           </div>

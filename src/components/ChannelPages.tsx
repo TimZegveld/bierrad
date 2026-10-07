@@ -30,7 +30,12 @@ import {
   type ChannelBindFailure,
   type MemberLoginFailure,
 } from "../sessions/ChannelClient";
-import { ReviewBallotCard, ReviewJoin, ReviewThanks } from "./ReviewBallot";
+import {
+  ReviewBallotCard,
+  ReviewJoin,
+  ReviewThanks,
+  type ReviewDraft,
+} from "./ReviewBallot";
 import { RoundExplainer } from "./RoundExplainer";
 import { configuredApiUrl } from "../sessions/liveNavigation";
 import { RemoteSessionController } from "../sessions/RemoteSessionController";
@@ -195,6 +200,8 @@ export function ChannelWheelPage({
   const [gone, setGone] = useState<false | "gone" | "loggedOut">(false);
   /** A ballot put aside with "Later"; it stays one click away. */
   const [later, setLater] = useState<string>();
+  /** The ballot being filled in; the card itself remounts when the round ends. */
+  const [draft, setDraft] = useState<ReviewDraft>();
   const live = useRoundController(api, status?.round?.spectatorCapability);
   const run = useCallback(
     async (command?: ChannelCommand) => {
@@ -302,6 +309,7 @@ export function ChannelWheelPage({
   const ballot = status.member?.ballot;
   const submit = async (submission: { scores: number[]; texts: string[] }) => {
     await run({ type: "review", drawId: ballot!.drawId, ...submission });
+    setDraft(undefined);
   };
   // Personal link: who you are (only to yourself), and your own ballot.
   const memberBar = member && (
@@ -334,15 +342,21 @@ export function ChannelWheelPage({
       </details>
     </div>
   );
+  // Always the first child and fixed on screen, in both layouts below, so the
+  // ballot stays put when the round ends and the page drops the wheel.
   const ballotCard = member && ballot && !ballot.submitted && later !== ballot.drawId && (
-    <ReviewBallotCard
-      key={ballot.drawId}
-      ballot={ballot}
-      variant={variant}
-      channelName={status.channelName}
-      onSubmit={submit}
-      onLater={() => setLater(ballot.drawId)}
-    />
+    <div className="review-overlay" key="review">
+      <ReviewBallotCard
+        key={ballot.drawId}
+        ballot={ballot}
+        variant={variant}
+        channelName={status.channelName}
+        draft={draft}
+        onDraftChange={setDraft}
+        onSubmit={submit}
+        onLater={() => setLater(ballot.drawId)}
+      />
+    </div>
   );
   // Anyone holding the channel link may log in to review, or just watch.
   const join = !member && api && (reviews.enabled || status.round?.reviews) && (
@@ -372,6 +386,7 @@ export function ChannelWheelPage({
   if (status.round)
     return (
       <ChannelTheme variant={variant} word={word}>
+        {ballotCard}
         <div className="channel-live">
           <div className="channel-strip" aria-live="polite">
             <strong>{channelTitle(variant, status.channelName, word)}</strong>
@@ -395,7 +410,6 @@ export function ChannelWheelPage({
             {memberBar}
             {join}
           </div>
-          {ballotCard && <div className="review-overlay">{ballotCard}</div>}
           <ChannelLive key={status.round.spectatorCapability} controller={live} />
         </div>
         {admin && <div className="unavailable channel-page">{admin}</div>}
@@ -403,10 +417,10 @@ export function ChannelWheelPage({
     );
   return (
     <ChannelTheme variant={variant}>
+      {ballotCard}
       <div className="unavailable channel-page">
         <span className="friday-badge">{channelTitle(variant, status.channelName)}</span>
         {memberBar}
-        {ballotCard}
         <h1>Tijd voor koffie, water of koek?</h1>
         <section className="channel-request">
           <p>

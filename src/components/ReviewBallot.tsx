@@ -13,24 +13,53 @@ const clock = new Intl.DateTimeFormat("nl-NL", {
   minute: "2-digit",
 });
 
-/** Stars per winner, an optional anonymous text, one submission. */
+/** What is filled in so far, kept only in memory and only for one draw. */
+export type ReviewDraft = {
+  drawId: string;
+  scores: (number | undefined)[];
+  texts: string[];
+};
+/** The kept draft for this ballot, or an empty one for a new draw. */
+export function draftFor(ballot: ReviewBallot, draft?: ReviewDraft): ReviewDraft {
+  if (
+    draft?.drawId === ballot.drawId &&
+    draft.scores.length === ballot.winners.length &&
+    draft.texts.length === ballot.winners.length
+  )
+    return draft;
+  return {
+    drawId: ballot.drawId,
+    scores: ballot.winners.map(() => undefined),
+    texts: ballot.winners.map(() => ""),
+  };
+}
+
+/**
+ * Stars per winner, an optional anonymous text, one submission. The page keeps
+ * the draft, so it survives the page switching layout or "Later".
+ */
 export function ReviewBallotCard({
   ballot,
   variant,
   channelName,
+  draft,
+  onDraftChange,
   onSubmit,
   onLater,
 }: {
   ballot: ReviewBallot;
   variant: WheelVariant;
   channelName?: string;
+  draft?: ReviewDraft;
+  onDraftChange: (draft: ReviewDraft) => void;
   onSubmit: (submission: ReviewSubmission) => Promise<void>;
   onLater: () => void;
 }) {
-  const [scores, setScores] = useState<(number | undefined)[]>(() =>
-    ballot.winners.map(() => undefined),
-  );
-  const [texts, setTexts] = useState(() => ballot.winners.map(() => ""));
+  const { scores, texts } = draftFor(ballot, draft);
+  const setScores = (update: (all: (number | undefined)[]) => (number | undefined)[]) =>
+    onDraftChange({ drawId: ballot.drawId, scores: update(scores), texts });
+  const setTexts = (update: (all: string[]) => string[]) =>
+    onDraftChange({ drawId: ballot.drawId, scores, texts: update(texts) });
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const labels = reviewLabels[variant];

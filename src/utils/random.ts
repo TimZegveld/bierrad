@@ -44,8 +44,9 @@ export function selectRiggedWinners(
 ): Participant[] {
   const forcedIds = new Set(rig.forcedIds ?? []);
   const forced = participants.filter((p) => forcedIds.has(p.id));
+  // A bigger slice has proportionally bigger odds, also when rigged.
   const weight = (p: Participant) => {
-    const value = rig.weights?.[p.id] ?? 1;
+    const value = (rig.weights?.[p.id] ?? 1) * (p.weight ?? 1);
     return Number.isFinite(value) && value > 0 ? value : 0;
   };
   const rest = participants.filter((p) => !forcedIds.has(p.id));

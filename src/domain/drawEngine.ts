@@ -1,5 +1,10 @@
 import type { BeerWheelSession, DrawInstruction, Participant } from "./models";
-import { idleRotation, landingMargin, landingRotation } from "./spin";
+import {
+  idleRotation,
+  landingMargin,
+  landingRotation,
+  wheelSlices,
+} from "./spin";
 import { validateParticipants } from "../utils/participants";
 import {
   randomFraction,
@@ -33,9 +38,15 @@ export function createSession(
 export function wheelParticipants(
   session: BeerWheelSession,
 ): readonly Participant[] {
-  if (!session.activeDraw) return session.participants;
+  const draw = session.activeDraw;
+  if (!draw) return session.participants;
   const byId = new Map(session.participants.map((p) => [p.id, p]));
-  return session.activeDraw.participantIds.map((id) => byId.get(id)!);
+  // The frozen slice sizes, so a replay lands exactly where the draw did.
+  return draw.participantIds.map((id, i) => {
+    const { weight: _, ...person } = byId.get(id)!;
+    const weight = draw.weights?.[i] ?? 1;
+    return weight > 1 ? { ...person, weight } : person;
+  });
 }
 /** Empty setup shows a placeholder instead of an unbounded saved preference. */
 export function wheelCount(session: BeerWheelSession): number {
@@ -70,12 +81,18 @@ export function startDraw(
     rig,
   );
   const participantIds = session.participants.map((p) => p.id);
-  const margin = landingMargin(participantIds.length);
+  const weighted = session.participants.some((p) => (p.weight ?? 1) > 1);
+  const weights = weighted
+    ? session.participants.map((p) => p.weight ?? 1)
+    : undefined;
+  const slices = wheelSlices(participantIds.length, weights);
   const spins = winners.map((winner, wheelIndex) => {
     const rotations = 6 + (wheelIndex % 2);
+    const index = participantIds.indexOf(winner.id);
+    const margin = landingMargin(participantIds.length, slices[index].size);
     const startRotation =
       session.activeDraw?.spins[wheelIndex]?.targetRotation ??
-      idleRotation(wheelIndex, participantIds.length);
+      idleRotation(wheelIndex, participantIds.length, weights);
     return {
       id: `${timing.id}:${wheelIndex}`,
       wheelIndex,
@@ -86,11 +103,12 @@ export function startDraw(
       startRotation,
       targetRotation: landingRotation(
         startRotation,
-        participantIds.indexOf(winner.id),
+        index,
         participantIds.length,
         rotations,
         // Uniform like a real wheel: sometimes just past a border, sometimes just short.
         margin + randomFraction() * (1 - 2 * margin),
+        weights,
       ),
       // Long, slow tail so the last border crossings stay exciting.
       easing: "cubic-bezier(.3,0,0,1)" as const,
@@ -100,7 +118,12 @@ export function startDraw(
     ...session,
     state: "spinning",
     winnerIds: [],
-    activeDraw: { ...timing, participantIds, spins },
+    activeDraw: {
+      ...timing,
+      participantIds,
+      ...(weights ? { weights } : {}),
+      spins,
+    },
   };
 }
 /** Authority reveals finished wheels and celebrates only after the slowest wheel. */

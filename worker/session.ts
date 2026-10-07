@@ -94,7 +94,9 @@ export function publicSession(record: StoredSession): PublicBeerWheelSession {
   return {
     variant: record.variant ?? "beer",
     ...(record.title ? { title: record.title } : {}),
-    participants: s.participants.map((p) => ({ id: p.id, name: p.name })),
+    participants: s.participants.map((p) =>
+      p.weight ? { id: p.id, name: p.name, weight: p.weight } : { id: p.id, name: p.name },
+    ),
     winnerCount: s.winnerCount,
     state: s.state,
     winnerIds: [...s.winnerIds],
@@ -104,6 +106,9 @@ export function publicSession(record: StoredSession): PublicBeerWheelSession {
             id: s.activeDraw.id,
             startAt: s.activeDraw.startAt,
             participantIds: [...s.activeDraw.participantIds],
+            ...(s.activeDraw.weights
+              ? { weights: [...s.activeDraw.weights] }
+              : {}),
             spins: s.activeDraw.spins.map((p) => ({
               id: p.id,
               wheelIndex: p.wheelIndex,

@@ -34,8 +34,11 @@ export function validateParticipants(
       names.has(key)
     )
       throw new Error("Ongeldige of dubbele deelnemers.");
+    const weight = person.weight ?? 1;
+    if (!Number.isSafeInteger(weight) || weight < 1 || weight > 100)
+      throw new Error("Ongeldige of dubbele deelnemers.");
     ids.add(person.id);
     names.add(key);
-    return { id: person.id, name };
+    return weight > 1 ? { id: person.id, name, weight } : { id: person.id, name };
   });
 }

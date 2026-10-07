@@ -441,6 +441,7 @@ test(
                       { name: "droplet", count: drinkers.length, users: drinkers },
                       // Only Koekrad rounds count these.
                       { name: "cookie", count: bakers.length, users: bakers },
+                      { name: "alice-koek", count: 1, users: ["U00000002"] },
                     ],
                   },
                 });
@@ -762,13 +763,20 @@ test(
       assert.equal((await cookieSnapshot()).variant, "cookie");
       assert.equal((await cookieSnapshot()).title, "taart");
       await cookieSession.due();
-      // Only the 🍪 reactor joins; ☕ and 💧 reactors and the bot never do.
-      assert.deepEqual((await cookieSnapshot()).participants.map((p) => p.name), ["Alice"]);
+      // 🍪 and the nominated Alice both join. The sponsor's coffee signup
+      // does not become a cookie signup, and the bot never joins.
+      const cookieDraw = await cookieSnapshot();
+      assert.deepEqual(cookieDraw.participants.map((p) => p.name), ["Alice", "Alice (2)"]);
+      assert.ok(!JSON.stringify(cookieDraw).includes("U0000000"));
+      const extraWon = cookieDraw.activeDraw!.spins[0].winnerId === cookieDraw.participants[1].id;
       await cookieSession.postNow();
       await cookieSession.postNow();
-      assert.match(String(updates.at(-1)!.text), /^🍪 Taartronde om \d\d:\d\d\n🏆 Alice haalt taart$/);
+      assert.match(String(updates.at(-1)!.text), /^🍪 Taartronde om \d\d:\d\d\n🏆 Alice(?: \(2\))? haalt taart$/);
+      assert.ok(JSON.stringify(updates.at(-1)!.blocks).includes('"user_id":"U00000001"'));
       const cookieResult = posts.findLast((p) => p.thread_ts === cookieCall.ts || String(p.text).includes("Jij mag taart halen!"))!;
       assert.match(String(cookieResult.text), /^🍪 .*Jij mag taart halen!/s);
+      assert.ok(String(cookieResult.text).includes("<@U00000001>"));
+      assert.equal(String(cookieResult.text).includes("Mede mogelijk gemaakt door... <@U00000002>"), extraWon);
       await cookieSession.land();
       await channel.finishRound();
       // The word goes with the round; an idle screen keeps the plain Koekrad theme.

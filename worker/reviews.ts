@@ -5,6 +5,7 @@ import {
   type ReviewProgress,
 } from "../shared/reviews";
 import { RequestError, type StoredSession } from "./session";
+import { participantSlackIds } from "./slack/state";
 
 /** Voting opens this long after the last reveal. */
 export const REVIEW_DELAY_MS = 60000;
@@ -142,9 +143,7 @@ export function openReview(
   const times = review && reviewTimes(record, review.minutes);
   if (review?.status !== "waiting" || !draw || !slack || end === undefined || !times)
     return;
-  const slackIds = new Map(
-    Object.entries(slack.mapping).map(([slackId, id]) => [id, slackId]),
-  );
+  const slackIds = participantSlackIds(slack);
   const pseudonymOf = (participantId: string) => {
     const slackId = slackIds.get(participantId);
     return slackId ? (pseudonyms.get(slackId) ?? null) : null;

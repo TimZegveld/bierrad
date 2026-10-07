@@ -61,6 +61,15 @@ export function parseSlackPermalink(
 export interface SlackPerson {
   slackId: string;
   name: string;
+  /** Extra Koekrad entry sponsored by this reactor, not their own signup. */
+  cookieReaction?: string;
+}
+/** Emoji names become literal labels only; underscores represent spaces. */
+export function cookieName(reaction: unknown): string | undefined {
+  if (typeof reaction !== "string") return;
+  const match = /^([a-z][a-z_-]{0,31})-koek$/.exec(reaction);
+  if (!match || !/^[a-z]+(?:[_-][a-z]+)*$/.test(match[1])) return;
+  return match[1].replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 }
 export function displayName(raw: unknown): string | undefined {
   if (typeof raw !== "string") return;
@@ -114,25 +123,29 @@ export class SlackReactionParticipantSource {
       if (!Array.isArray(reactions)) throw new SlackError("slack_response");
       const matches = reactions
         .map(object)
-        .filter((r) => r.name === source.reactionName);
-      if (matches.length > 1) throw new SlackError("slack_response");
-      if (!matches.length) return [];
-      const r = matches[0];
-      if (
-        !Array.isArray(r.users) ||
-        r.users.some(
-          (id) =>
-            typeof id !== "string" ||
-            !/^(?:[UW][A-Z0-9]{8,20}|USLACKBOT)$/.test(id),
-        ) ||
-        !Number.isSafeInteger(r.count) ||
-        Number(r.count) < 0
-      )
+        .filter(
+          (r) => r.name === source.reactionName ||
+            (source.reactionName === "cookie" && cookieName(r.name)),
+        );
+      if (new Set(matches.map((r) => r.name)).size !== matches.length)
         throw new SlackError("slack_response");
-      const ids = [...new Set(r.users as string[])].sort();
-      if (ids.length !== r.count) throw new SlackError("slack_incomplete");
-      if (ids.length > 100) throw new SlackError("slack_too_many");
-      const result: SlackPerson[] = [];
+      const entries = matches.flatMap((r) => {
+        if (
+          !Array.isArray(r.users) ||
+          r.users.some(
+            (id) => typeof id !== "string" ||
+              !/^(?:[UW][A-Z0-9]{8,20}|USLACKBOT)$/.test(id),
+          ) ||
+          !Number.isSafeInteger(r.count) ||
+          Number(r.count) < 0
+        ) throw new SlackError("slack_response");
+        const users = [...new Set(r.users as string[])].sort();
+        if (users.length !== r.count) throw new SlackError("slack_incomplete");
+        return users.map((id) => ({ id, reaction: String(r.name) }));
+      });
+      if (entries.length > 100) throw new SlackError("slack_too_many");
+      const ids = [...new Set(entries.map((e) => e.id))].sort();
+      const people = new Map<string, SlackPerson>();
       let cursor = 0;
       await Promise.all(
         Array.from({ length: Math.min(4, ids.length) }, async () => {
@@ -164,11 +177,16 @@ export class SlackReactionParticipantSource {
               displayName(profile.real_name) ??
               displayName(user.real_name) ??
               "Deelnemer";
-            result.push({ slackId: id, name });
+            people.set(id, { slackId: id, name });
           }
         }),
       );
-      return result.sort((a, b) => a.slackId.localeCompare(b.slackId));
+      return entries
+        .filter((e) => people.has(e.id))
+        .sort((a, b) => a.reaction.localeCompare(b.reaction) || a.id.localeCompare(b.id))
+        .map((e) => e.reaction === source.reactionName
+          ? people.get(e.id)!
+          : { slackId: e.id, name: cookieName(e.reaction)!, cookieReaction: e.reaction });
     } finally {
       controller.abort();
       clearTimeout(timeout);

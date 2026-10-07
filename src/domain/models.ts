@@ -2,6 +2,8 @@ import type { WheelVariant } from "../../shared/variant";
 export interface Participant {
   readonly id: string;
   readonly name: string;
+  /** Server-set relative slice size and odds (Koekrad nominations); absent means 1. */
+  readonly weight?: number;
 }
 export type DrawState =
   | "setup"
@@ -27,6 +29,8 @@ export interface DrawInstruction {
   readonly startAt: string;
   /** One full, ordered pool shared by every wheel. */
   readonly participantIds: readonly string[];
+  /** Frozen slice sizes parallel to `participantIds`; absent when all are equal. */
+  readonly weights?: readonly number[];
   readonly spins: readonly SpinInstruction[];
 }
 export interface BeerWheelSession {

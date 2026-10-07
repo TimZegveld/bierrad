@@ -80,88 +80,90 @@ test("emoji-only rounds work; incomplete, duplicate and oversized reactions fail
   await assert.rejects(get([{ ...reaction, count: many.length, users: many }]), (e: SlackError) => e.code === "slack_too_many");
 });
 
-test("refresh retains extra opaque IDs, removes withdrawn emojis and resolves only unambiguous own signups", () => {
-  const r = record([alice, bob, nomination, { ...nomination, slackId: "U00000003" }]);
-  assert.deepEqual(r.session.participants.map((p) => p.name), ["Alice", "Bob", "Alice (2)", "Alice (3)"]);
-  assert.equal(r.slack!.mapping[bob.slackId], r.session.participants[1].id);
-  const activeDto = JSON.stringify(publicSession(r));
-  for (const privateValue of [alice.slackId, bob.slackId, "cookieEntries", "sponsorId"])
-    assert.ok(!activeDto.includes(privateValue));
-  const entries = structuredClone(r.slack!.cookieEntries!);
-  reconcile(r, source, [alice, bob, nomination, { ...nomination, slackId: "U00000003" }], now);
-  assert.deepEqual(r.slack!.cookieEntries, entries);
-  reconcile(r, source, [bob, nomination], now);
-  assert.equal(Object.values(r.slack!.cookieEntries!)[0].mentionId, null);
-  assert.equal(Object.values(r.slack!.cookieEntries!)[0].id, entries["alice-koek:U00000002"].id);
-  assert.deepEqual(r.session.participants.map((p) => p.name), ["Bob", "Alice"]);
-  reconcile(r, source, [alice, { ...alice, slackId: "U00000003", name: "ALICE" }, bob, nomination], now);
-  assert.equal(Object.values(r.slack!.cookieEntries!)[0].mentionId, null);
-  reconcile(r, source, [{ ...alice, name: "aLiCe" }, bob, nomination], now);
-  assert.equal(Object.values(r.slack!.cookieEntries!)[0].mentionId, alice.slackId);
-  reconcile(r, source, [alice, bob], now);
-  assert.deepEqual(r.slack!.cookieEntries, {});
-  assert.equal(r.session.participants.length, 2);
+test("nominations enlarge only the unique exact match's slice; missing, ambiguous and withdrawn ones are ignored", () => {
+  const carol = { slackId: "U00000003", name: "Carol" };
+  const r = record([alice, bob, carol, nomination, { ...nomination, slackId: carol.slackId }]);
+  const [aliceId, bobId] = r.session.participants.map((p) => p.id);
+  assert.deepEqual(r.session.participants.map(({ name, weight }) => ({ name, weight })),
+    [{ name: "Alice", weight: 3 }, { name: "Bob", weight: undefined }, { name: "Carol", weight: undefined }]);
+  assert.deepEqual(r.slack!.cookieSponsors, { [aliceId]: [bob.slackId, carol.slackId] });
+  assert.equal(r.slack!.count, 3);
   const dto = JSON.stringify(publicSession(r));
-  for (const privateValue of [alice.slackId, bob.slackId, "cookieEntries", "sponsorId"])
+  assert.ok(dto.includes('"weight":3'));
+  for (const privateValue of ["U0000000", "cookieSponsors", "koek"])
     assert.ok(!dto.includes(privateValue));
+  // Stable IDs; a withdrawn reaction shrinks the slice again.
+  reconcile(r, source, [alice, bob, carol, nomination], now);
+  assert.deepEqual(r.session.participants.map((p) => [p.id, p.weight]), [[aliceId, 2], [bobId, undefined], [r.session.participants[2].id, undefined]]);
+  reconcile(r, source, [alice, bob], now);
+  assert.equal(r.slack!.cookieSponsors, undefined);
+  assert.ok(r.session.participants.every((p) => p.weight === undefined));
+  // Without a 🍪 Alice, or with two of them, the nomination is ignored.
+  reconcile(r, source, [bob, nomination], now);
+  assert.deepEqual(r.session.participants.map((p) => [p.name, p.weight]), [["Bob", undefined]]);
+  reconcile(r, source, [alice, { ...alice, slackId: carol.slackId, name: "ALICE" }, bob, nomination], now);
+  assert.ok(r.session.participants.every((p) => p.weight === undefined));
+  assert.equal(r.slack!.cookieSponsors, undefined);
+  reconcile(r, source, [{ ...alice, name: "aLiCe" }, bob, nomination], now);
+  assert.equal(r.session.participants[0].weight, 2);
 });
 
-test("extra winner freezes target and sponsor mentions, regular winners have no credit", () => {
-  const r = record([alice, bob, nomination]);
-  draw(r, Object.values(r.slack!.cookieEntries!)[0].id);
-  const job = r.slack!.job!;
-  assert.deepEqual(job.mentionIds, [alice.slackId]);
-  assert.deepEqual(job.sponsorIds, [bob.slackId]);
-  r.slack!.cookieEntries = {};
-  r.slack!.mapping = {};
-  const body = resultBody(job);
-  assert.match(body.text, /<@U00000001>/);
-  assert.match(body.text, /Mede mogelijk gemaakt door\.\.\. <@U00000002>/);
-  assert.deepEqual(body.blocks[0].elements[0].elements.filter((e) => e.type === "user").map((e) => e.user_id), [alice.slackId, bob.slackId]);
-  assert.equal(body.reply_broadcast, false);
-  assert.equal(body.unfurl_links, false);
-  assert.ok(!JSON.stringify(publicSession(r)).includes("U0000000"));
-  const normal = record([alice, bob, nomination]);
-  draw(normal, normal.slack!.mapping[bob.slackId]);
-  assert.deepEqual(normal.slack!.job!.mentionIds, [bob.slackId]);
-  assert.ok(!resultBody(normal.slack!.job!).text.includes("mogelijk gemaakt"));
-  assert.ok(!resultBody({ ...job, sponsorIds: ["!channel"] }).text.includes("<!channel>"));
-  assert.ok(!resultBody({ ...job, source: { ...source, reactionName: "coffee" } }).text.includes("mogelijk gemaakt"));
-});
-
-test("full names match before suffixes and oversized reconciliation is atomic", () => {
+test("full names match before suffixes, legacy extra entries go, oversized reconciliation is atomic", () => {
   const r = record([{ ...alice, name: "Alice Bakker" }, bob,
     { ...nomination, cookieReaction: "alice_bakker-koek" }]);
-  assert.equal(Object.values(r.slack!.cookieEntries!)[0].mentionId, alice.slackId);
-  assert.deepEqual(r.session.participants.map((p) => p.name), ["Alice Bakker", "Bob", "Alice bakker (2)"]);
+  assert.deepEqual(r.session.participants.map((p) => [p.name, p.weight]), [["Alice Bakker", 2], ["Bob", undefined]]);
+  // A round started before weighted slices keeps no stale extra entry.
+  r.slack!.cookieEntries = { "alice-koek:U00000002": { id: "legacy" } };
+  r.session = { ...r.session, participants: [...r.session.participants, { id: "legacy", name: "Alice (2)" }] };
+  reconcile(r, source, [alice, bob], now);
+  assert.deepEqual(r.session.participants.map((p) => p.name), ["Alice", "Bob"]);
+  assert.equal(r.slack!.cookieEntries, undefined);
   const previous = structuredClone(r);
   const many = Array.from({ length: 101 }, (_, i) => ({ slackId: `U${String(i).padStart(8, "0")}`, name: `Synthetic ${i}` }));
   assert.throws(() => reconcile(r, source, many, now), { code: "slack_too_many" });
   assert.deepEqual(r, previous);
 });
 
-test("unmatched emoji winner stays literal and reviews never grant votes through an emoji", () => {
-  const r = record([nomination]);
-  draw(r, r.session.participants[0].id);
-  assert.deepEqual(r.slack!.job!.mentionIds, [null]);
-  assert.match(resultBody(r.slack!.job!).text, /\nAlice\nJij mag koek halen!/);
-  r.review = { minutes: 15, key: "synthetic", status: "waiting" };
-  openReview(r, new Map());
-  assert.equal(r.review.status, "closed");
+test("the winning ticket decides the credit; slice, mention and review stay with the signed-up winner", () => {
+  const seen = new Set<string | null>();
+  for (let i = 0; i < 200 && seen.size < 2; i++) {
+    const r = record([alice, bob, nomination]);
+    draw(r, r.slack!.mapping[alice.slackId]);
+    const job = r.slack!.job!;
+    assert.deepEqual(r.session.activeDraw!.weights, [2, 1]);
+    assert.deepEqual(job.names, ["Alice"]);
+    assert.deepEqual(job.mentionIds, [alice.slackId]);
+    seen.add(job.sponsorIds![0]);
+    const body = resultBody(job);
+    const users = body.blocks[0].elements[0].elements.filter((e) => e.type === "user").map((e) => e.user_id);
+    if (job.sponsorIds![0]) {
+      assert.match(body.text, /Mede mogelijk gemaakt door\.\.\. <@U00000002>/);
+      assert.deepEqual(users, [alice.slackId, bob.slackId]);
+    } else {
+      assert.ok(!body.text.includes("mogelijk gemaakt"));
+      assert.deepEqual(users, [alice.slackId]);
+    }
+    assert.equal(body.reply_broadcast, false);
+    assert.equal(body.unfurl_links, false);
+    assert.ok(!JSON.stringify(publicSession(r)).includes("U0000000"));
+  }
+  // Both the own 🍪 ticket and the nomination ticket can win.
+  assert.deepEqual([...seen].sort(), [bob.slackId, null].sort());
+
+  const normal = record([alice, bob, nomination]);
+  draw(normal, normal.slack!.mapping[bob.slackId]);
+  assert.deepEqual(normal.slack!.job!.mentionIds, [bob.slackId]);
+  assert.deepEqual(normal.slack!.job!.sponsorIds, [null]);
+  const job = { ...normal.slack!.job!, sponsorIds: ["!channel"] };
+  assert.ok(!resultBody(job).text.includes("<!channel>"));
+  assert.ok(!resultBody({ ...job, sponsorIds: [bob.slackId], source: { ...source, reactionName: "coffee" } }).text.includes("mogelijk gemaakt"));
 
   const matched = record([alice, bob, nomination]);
-  draw(matched, Object.values(matched.slack!.cookieEntries!)[0].id);
+  draw(matched, matched.slack!.mapping[alice.slackId]);
   matched.review = { minutes: 15, key: "synthetic", status: "waiting" };
   openReview(matched, new Map([[alice.slackId, "pseudo-alice"], [bob.slackId, "pseudo-bob"]]));
   assert.deepEqual(matched.review.winners!.map((w) => w.mentionId), [alice.slackId]);
   assert.deepEqual(matched.review.eligible, ["pseudo-bob"]);
   assert.equal(reviewBallot(matched, "pseudo-alice", matched.review.opensAt!), undefined);
   assert.ok(reviewBallot(matched, "pseudo-bob", matched.review.opensAt!));
-
-  const sponsorOnly = record([alice, nomination]);
-  draw(sponsorOnly, Object.values(sponsorOnly.slack!.cookieEntries!)[0].id);
-  sponsorOnly.review = { minutes: 15, key: "synthetic", status: "waiting" };
-  openReview(sponsorOnly, new Map([[alice.slackId, "pseudo-alice"]]));
-  assert.equal(sponsorOnly.review.status, "closed");
-  assert.equal(reviewBallot(sponsorOnly, "pseudo-bob", now + 60000), undefined);
 });

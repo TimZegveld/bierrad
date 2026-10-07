@@ -2,7 +2,7 @@ import { useTheme } from "../Theme";
 import type { Participant, SpinInstruction } from "../domain/models";
 import { useWheelAnimation } from "../hooks/useWheelAnimation";
 import { usePointerTicks } from "../hooks/usePointerTicks";
-import { idleRotation, RIM_PEGS } from "../domain/spin";
+import { idleRotation, RIM_PEGS, wheelSlices } from "../domain/spin";
 export const colors = [
   "#f8bd37",
   "#eb794e",
@@ -26,16 +26,23 @@ export function BeerWheel({
 }) {
   const theme = useTheme();
   const palette = theme.wheelColors ?? colors;
-  const displayed = people.length
+  const displayed: readonly Participant[] = people.length
     ? people
     : Array.from({ length: 8 }, (_, i) => ({ id: String(i), name: "" }));
+  // Server-set weights make a slice bigger; equal slices without them.
+  const weights = displayed.some((p) => (p.weight ?? 1) > 1)
+    ? displayed.map((p) => p.weight ?? 1)
+    : undefined;
+  const slices = wheelSlices(displayed.length, weights).map((s) => ({
+    from: s.start * 360,
+    size: s.size * 360,
+  }));
   // Matches the first spin's startRotation, so the wheel never jumps when it starts.
   const ref = useWheelAnimation(
     spin,
-    idleRotation(wheelIndex, displayed.length),
+    idleRotation(wheelIndex, displayed.length, weights),
   );
   const pointer = usePointerTicks(ref, spinning);
-  const step = 360 / displayed.length;
   const point = (angle: number, radius = 194) => [
     210 + radius * Math.sin((angle * Math.PI) / 180),
     210 - radius * Math.cos((angle * Math.PI) / 180),
@@ -53,27 +60,29 @@ export function BeerWheel({
         <circle className="wheel-rim" cx="210" cy="210" r="209" />
         <circle className="wheel-face" cx="210" cy="210" r="201" />
         {displayed.map((p, i) => {
-          const a = point(i * step),
-            b = point((i + 1) * step);
+          const { from, size } = slices[i];
+          const middle = from + size / 2;
+          const a = point(from),
+            b = point(from + size);
           return (
             <g key={p.id}>
               {displayed.length === 1 ? (
                 <circle cx="210" cy="210" r="194" fill={palette[0]} />
               ) : (
                 <path
-                  d={`M 210 210 L ${a.join(" ")} A 194 194 0 ${step > 180 ? 1 : 0} 1 ${b.join(" ")} Z`}
+                  d={`M 210 210 L ${a.join(" ")} A 194 194 0 ${size > 180 ? 1 : 0} 1 ${b.join(" ")} Z`}
                   className="wheel-segment"
                   fill={palette[i % palette.length]}
                   strokeWidth="2"
                 />
               )}
-              <g transform={`rotate(${(i + 0.5) * step - 90} 210 210)`}>
+              <g transform={`rotate(${middle - 90} 210 210)`}>
                 <text
                   x="333"
                   y="210"
                   dominantBaseline="middle"
                   transform={
-                    (i + 0.5) * step > 180 ? "rotate(180 333 210)" : undefined
+                    middle > 180 ? "rotate(180 333 210)" : undefined
                   }
                   textLength={p.name.length > 13 ? 132 : undefined}
                   lengthAdjust="spacingAndGlyphs"

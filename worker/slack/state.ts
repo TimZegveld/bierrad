@@ -1,6 +1,7 @@
 import { reactionVariant, themeFor, themes } from "../../shared/variant";
 import type { CallOutcome } from "../channel/messages";
 import { createSession } from "../../src/domain/drawEngine";
+import { randomIndex } from "../../src/utils/random";
 import type { WheelVariant } from "../../shared/variant";
 import type { SlackReminderStatus } from "../../shared/protocol";
 import type { StoredSession } from "../session";
@@ -31,7 +32,7 @@ export interface SlackJob {
   names: string[];
   /** Private, frozen in winner order; absent on jobs created before mentions shipped. */
   mentionIds?: (string | null)[];
-  /** Koekrad only: the reactor sponsoring each winning extra entry. */
+  /** Koekrad only: per winner, the reactor whose nomination ticket won, or null. */
   sponsorIds?: (string | null)[];
   /** Host-started sessions with reviews: the invitation under the winners. */
   review?: { until: number; link: string };
@@ -68,12 +69,13 @@ export interface SlackState {
   grantExpiresAt?: number;
   source?: SlackSource;
   mapping: Record<string, string>;
-  /** Private, temporary entries keyed by emoji and reactor; never a directory. */
-  cookieEntries?: Record<string, {
-    id: string;
-    sponsorId: string;
-    mentionId: string | null;
-  }>;
+  /**
+   * Koekrad only, private and temporary: per participant ID, the reactors whose
+   * `:naam-koek:` made that participant's slice bigger, one ticket each.
+   */
+  cookieSponsors?: Record<string, string[]>;
+  /** Legacy extra entries of rounds started before slices were weighted. */
+  cookieEntries?: Record<string, { id: string }>;
   syncedAt?: string;
   count?: number;
   importing?: { id: string; until: number };
@@ -90,15 +92,11 @@ export interface SlackState {
   /** Private: the bot's own user, whose prefilled reaction never counts. */
   excludeUserIds?: string[];
 }
-/** Resolves entry identities without treating a sponsor as the nominated person. */
+/** Participant ID to Slack ID; nominations never add identities. */
 export function participantSlackIds(state: SlackState): Map<string, string> {
-  const identities = new Map(
+  return new Map(
     Object.entries(state.mapping).map(([slackId, id]) => [id, slackId]),
   );
-  if (state.source?.reactionName === "cookie")
-    for (const entry of Object.values(state.cookieEntries ?? {}))
-      if (entry.mentionId) identities.set(entry.id, entry.mentionId);
-  return identities;
 }
 /** Stable opaque identity; numbered display labels distinguish equal names without Slack IDs. */
 export function reconcile(
@@ -116,41 +114,39 @@ export function reconcile(
   const used = new Set(manual.map((p) => p.name.toLocaleLowerCase("nl")));
   const mapping: Record<string, string> = {};
   const own = people.filter((p) => !p.cookieReaction);
-  const cookieEntries: NonNullable<SlackState["cookieEntries"]> = {};
-  const uniqueLabel = (base: string) => {
-    let name = base;
-    let suffix = 1;
-    while (used.has(name.toLocaleLowerCase("nl"))) {
-      const label = ` (${++suffix})`;
-      name = base.slice(0, 32 - label.length).trimEnd() + label;
-    }
-    used.add(name.toLocaleLowerCase("nl"));
-    return name;
-  };
-  const imported = own.map((p) => {
-    const id = state.mapping[p.slackId] ?? crypto.randomUUID();
-    mapping[p.slackId] = id;
-    return { id, name: uniqueLabel(p.name) };
-  });
+  const sponsors: Record<string, string[]> = {};
   if (source.reactionName === "cookie") {
+    const seen = new Set<string>();
     for (const p of people.filter((p) => p.cookieReaction)) {
       const name = cookieName(p.cookieReaction);
       if (!name) throw new RequestError(400, "slack_response");
       const key = `${p.cookieReaction}:${p.slackId}`;
-      if (cookieEntries[key]) throw new RequestError(400, "slack_response");
-      const id = state.cookieEntries?.[key]?.id ?? crypto.randomUUID();
-      // Match only actual cookie signups, before display suffixes are added.
-      // Ambiguous names never cause an arbitrary person to be tagged.
+      if (seen.has(key)) throw new RequestError(400, "slack_response");
+      seen.add(key);
+      // Only the unique exact name match among actual cookie signups, before
+      // display suffixes; missing or ambiguous names are ignored.
       const matches = own.filter((person) =>
         person.name.toLocaleLowerCase("nl") === name.toLocaleLowerCase("nl"));
-      cookieEntries[key] = {
-        id,
-        sponsorId: p.slackId,
-        mentionId: matches.length === 1 ? matches[0].slackId : null,
-      };
-      imported.push({ id, name: uniqueLabel(name) });
+      if (matches.length === 1)
+        (sponsors[matches[0].slackId] ??= []).push(p.slackId);
     }
   }
+  const cookieSponsors: Record<string, string[]> = {};
+  const imported = own.map((p) => {
+    const id = state.mapping[p.slackId] ?? crypto.randomUUID();
+    mapping[p.slackId] = id;
+    let name = p.name;
+    let suffix = 1;
+    while (used.has(name.toLocaleLowerCase("nl"))) {
+      const label = ` (${++suffix})`;
+      name = p.name.slice(0, 32 - label.length).trimEnd() + label;
+    }
+    used.add(name.toLocaleLowerCase("nl"));
+    const extra = sponsors[p.slackId];
+    if (!extra) return { id, name };
+    cookieSponsors[id] = extra.sort();
+    return { id, name, weight: 1 + extra.length };
+  });
   if (manual.length + imported.length > 100)
     throw new RequestError(400, "slack_too_many");
   record.session = createSession(
@@ -160,8 +156,9 @@ export function reconcile(
   );
   state.source = source;
   state.mapping = mapping;
-  if (source.reactionName === "cookie") state.cookieEntries = cookieEntries;
-  else delete state.cookieEntries;
+  if (Object.keys(cookieSponsors).length) state.cookieSponsors = cookieSponsors;
+  else delete state.cookieSponsors;
+  delete state.cookieEntries;
   state.count = imported.length;
   state.syncedAt = new Date(now).toISOString();
 }
@@ -170,9 +167,13 @@ export function queueResult(record: StoredSession) {
     slack = record.slack;
   if (!draw || !slack?.source) return;
   const identities = participantSlackIds(slack);
-  const sponsors = new Map(
-    Object.values(slack.cookieEntries ?? {}).map((e) => [e.id, e.sponsorId]),
-  );
+  // One ticket per slice unit, drawn once here as the draw starts: the
+  // winner's own signup credits nobody, a nomination ticket its reactor.
+  const sponsorOf = (winnerId: string) => {
+    const sponsors = slack.cookieSponsors?.[winnerId] ?? [];
+    const ticket = sponsors.length ? randomIndex(1 + sponsors.length) : 0;
+    return ticket ? sponsors[ticket - 1] : null;
+  };
   slack.job = {
     drawId: draw.id,
     source: { ...slack.source },
@@ -182,7 +183,7 @@ export function queueResult(record: StoredSession) {
     ),
     mentionIds: draw.spins.map((spin) => identities.get(spin.winnerId) ?? null),
     ...(slack.source.reactionName === "cookie" ? {
-      sponsorIds: draw.spins.map((spin) => sponsors.get(spin.winnerId) ?? null),
+      sponsorIds: draw.spins.map((spin) => sponsorOf(spin.winnerId)),
     } : {}),
     ...(record.title ? { title: record.title } : {}),
     status: "pending",

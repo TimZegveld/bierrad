@@ -52,7 +52,7 @@ test("the channel page renders the ballot first in both layouts, never in local 
   const page = readFileSync("src/components/ChannelPages.tsx", "utf8");
   // Same position in the round and the no-round layout, so it is not remounted.
   assert.equal(page.match(/<ChannelTheme[^>]*>\s*\{ballotCard\}/g)?.length, 2);
-  for (const file of ["ChannelPages.tsx", "SessionJoinPage.tsx", "ReviewBallot.tsx"])
+  for (const file of ["ChannelPages.tsx", "ReviewBallot.tsx"])
     assert.doesNotMatch(
       readFileSync(`src/components/${file}`, "utf8"),
       /localStorage|sessionStorage|indexedDB/,

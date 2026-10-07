@@ -29,7 +29,6 @@ export interface RemoteOptions {
   apiUrl: string;
   capability: string;
   role: ClientRole;
-  spectatorCapability?: string;
   fetch?: typeof fetch;
   socket?: (url: string, protocols: string[]) => WebSocket;
 }
@@ -86,7 +85,6 @@ export class RemoteSessionController implements SessionController {
   private pingAt?: number;
   private lastReceived = 0;
   private expiresAt?: string;
-  private slack?: PublicBeerWheelSession["slack"];
   private scheduledDraw?: PublicBeerWheelSession["scheduledDraw"];
   private review?: import("../../shared/reviews").ReviewProgress;
   private connecting = false;
@@ -124,7 +122,6 @@ export class RemoteSessionController implements SessionController {
         role: this.options.role,
         status,
         expiresAt: this.expiresAt,
-        slack: this.slack,
         scheduledDraw: this.scheduledDraw,
         review: this.review,
       },
@@ -150,7 +147,6 @@ export class RemoteSessionController implements SessionController {
   private receive(dto: PublicBeerWheelSession) {
     if (this.terminal || this.disposed || dto.revision < this.revision) return;
     this.revision = dto.revision;
-    this.slack = this.options.role === "host" ? dto.slack : undefined;
     this.expiresAt = dto.expiresAt;
     this.scheduledDraw = dto.scheduledDraw;
     this.review = dto.review;
@@ -213,7 +209,6 @@ export class RemoteSessionController implements SessionController {
   }
   private unavailable() {
     this.terminal = true;
-    this.slack = undefined;
     this.scheduledDraw = undefined;
     clearTimeout(this.retry);
     clearTimeout(this.expiry);
@@ -244,9 +239,7 @@ export class RemoteSessionController implements SessionController {
       cache: "no-store",
       credentials: "omit",
       referrerPolicy: "no-referrer",
-      signal: AbortSignal.timeout(
-        command?.type === "slackImport" ? 35000 : 10000,
-      ),
+      signal: AbortSignal.timeout(10000),
     });
     if (this.disposed || this.terminal) return;
     if (response.status === 404) {
@@ -257,30 +250,8 @@ export class RemoteSessionController implements SessionController {
       const data = (await response.json().catch(() => ({}))) as {
         code?: string;
       };
-      const slackMessages: Record<string, string> = {
-        invalid_schedule:
-          "Kies een toekomstig tijdstip binnen de komende 30 dagen.",
-        schedule_access_expires:
-          "De Slack-toegang van deze sessie is niet lang genoeg geldig voor deze planning plus één uur. Start een nieuw rad via Inloggen met Slack.",
-        slack_link:
-          "Plak een volledige Slack-berichtlink. Een threadlink verwijst naar het hoofdbericht.",
-        slack_incomplete:
-          "Slack gaf niet alle reagerende personen terug. Er is niets geïmporteerd.",
-        slack_too_many: "Er passen maximaal 100 deelnemers in een live rad.",
-        slack_rate_limited:
-          "Slack vraagt even geduld. Wacht minstens een minuut en probeer later opnieuw.",
-        slack_rejected:
-          "Controleer of de Slack-bot toegang tot het gesprek heeft en de juiste rechten heeft.",
-        slack_response:
-          "Slack gaf geen volledige geldige deelnemerslijst terug. Je lijst is niet aangepast.",
-        slack_unavailable:
-          "Slack ophalen is niet gelukt. Je lijst is niet aangepast.",
-        slack_posting:
-          "De uitslag wordt nog naar Slack verstuurd. Een ogenblik…",
-        slack_busy: "De deelnemers worden nog opgehaald. Een ogenblik…",
-      };
-      if (data.code && slackMessages[data.code])
-        throw new Error(slackMessages[data.code]);
+      if (data.code === "invalid_schedule")
+        throw new Error("Kies een toekomstig tijdstip binnen de komende 30 dagen.");
       if (response.status === 409) {
         await this.request("/api/session");
         throw new Error(
@@ -421,37 +392,11 @@ export class RemoteSessionController implements SessionController {
       names: people.map((p) => p.name),
     });
   }
-  importSlack(permalink?: string) {
-    return this.command({
-      type: "slackImport",
-      ...(permalink === undefined ? {} : { permalink }),
-    });
-  }
-  useManualSource() {
-    return this.command({ type: "slackManual" });
-  }
-  retrySlackResult() {
-    return this.command({ type: "slackRetry" });
-  }
-  setReviews(enabled: boolean, minutes: number) {
-    return this.command({ type: "setReviews", enabled, minutes });
-  }
   setWinnerCount(count: number) {
     return this.command({ type: "setWinnerCount", count });
   }
-  get canShareSpectatorLink() {
-    return this.options.role === "host" && !!this.options.spectatorCapability;
-  }
-  setScheduledDraw(startAt: string | null, shareSpectatorLink = false) {
-    return this.command({
-      type: "setScheduledDraw",
-      startAt,
-      ...(startAt !== null &&
-      shareSpectatorLink &&
-      this.options.spectatorCapability
-        ? { spectatorCapability: this.options.spectatorCapability }
-        : {}),
-    });
+  setScheduledDraw(startAt: string | null) {
+    return this.command({ type: "setScheduledDraw", startAt });
   }
   startDraw() {
     return this.command({ type: "startDraw" });

@@ -1,6 +1,5 @@
 import { useTheme } from "./Theme";
 import { localHash, standaloneVariants, themes } from "../shared/variant";
-import { SlackControls, SlackResultStatus } from "./components/SlackControls";
 import { ScheduleControls } from "./components/ScheduleControls";
 import { formatScheduledTime } from "./utils/schedule";
 import { PlaybackClock } from "./hooks/PlaybackClock";
@@ -34,11 +33,7 @@ export default function App({ controller }: { controller: SessionController }) {
   const [forcedIds, setForcedIds] = useState<string[]>([]);
   const closeSecret = useCallback(() => setSecretOpen(false), []);
   const notice = error || sessionNotice || uiNotice;
-  const slackBusy =
-    !!live?.slack?.importing || live?.scheduledDraw?.status === "refreshing";
-  const slackPosting =
-    !!live?.slack?.result &&
-    ["pending", "posting"].includes(live.slack.result.status);
+  const scheduleBusy = live?.scheduledDraw?.status === "refreshing";
   const spinning = ["countdown", "spinning"].includes(session.state);
   const finished = session.state === "finished";
   // Live draws are chosen by the server, so the secret panel is local-only.
@@ -137,7 +132,7 @@ export default function App({ controller }: { controller: SessionController }) {
             <WinnerCountControl
               count={session.winnerCount}
               max={session.participants.length}
-              disabled={!capabilities.canConfigureDraw || pending || slackBusy}
+              disabled={!capabilities.canConfigureDraw || pending || scheduleBusy}
               readOnly={!capabilities.canControlSession}
               onChange={(count) => {
                 void run(() => controller.setWinnerCount(count));
@@ -157,8 +152,7 @@ export default function App({ controller }: { controller: SessionController }) {
                 disabled={
                   !capabilities.canStartDraw ||
                   pending ||
-                  slackBusy ||
-                  slackPosting
+                  scheduleBusy
                 }
               />
             ) : (
@@ -169,8 +163,7 @@ export default function App({ controller }: { controller: SessionController }) {
                     disabled={
                       !capabilities.canStartDraw ||
                       pending ||
-                      slackBusy ||
-                      slackPosting
+                      scheduleBusy
                     }
                     onClick={start}
                   >
@@ -199,45 +192,13 @@ export default function App({ controller }: { controller: SessionController }) {
                 tijd).
               </p>
             )}
-            {live?.role === "host" && live.slack && (
-              <SlackResultStatus
-                status={live.slack}
-                disabled={pending || live.status !== "connected"}
-                onRetry={() => {
-                  void run(() => controller.retrySlackResult!());
-                }}
-              />
-            )}
           </section>
           <div className="sidebar">
             <ParticipantManager
               live={!!live}
-              sourceControls={
-                live?.role === "host" &&
-                live.slack &&
-                controller.importSlack ? (
-                  <SlackControls
-                    status={live.slack}
-                    locked={!capabilities.canManageParticipants || pending}
-                    scheduledStartAt={
-                      live.scheduledDraw?.status === "pending"
-                        ? live.scheduledDraw.startAt
-                        : undefined
-                    }
-                    onImport={(link) => controller.importSlack!(link)}
-                    onManual={() => controller.useManualSource!()}
-                    onReviews={
-                      controller.setReviews
-                        ? (enabled, minutes) =>
-                            controller.setReviews!(enabled, minutes)
-                        : undefined
-                    }
-                  />
-                ) : undefined
-              }
               people={session.participants}
               locked={
-                !capabilities.canManageParticipants || pending || slackBusy
+                !capabilities.canManageParticipants || pending || scheduleBusy
               }
               readOnly={!capabilities.canControlSession}
               onChange={(people) => {
@@ -253,19 +214,11 @@ export default function App({ controller }: { controller: SessionController }) {
                 <ScheduleControls
                   plan={live.scheduledDraw}
                   expiresAt={live.expiresAt}
-                  slack={
-                    live.slack?.enabled && live.slack.source === "slack"
-                      ? {
-                          canShare: !!controller.canShareSpectatorLink,
-                          reminder: live.slack.reminder,
-                        }
-                      : undefined
-                  }
                   locked={
-                    !capabilities.canManageParticipants || pending || slackBusy
+                    !capabilities.canManageParticipants || pending || scheduleBusy
                   }
                   clockOffsetMs={clockOffsetMs}
-                  onSave={(at, share) => controller.setScheduledDraw!(at, share)}
+                  onSave={(at) => controller.setScheduledDraw!(at)}
                 />
               )}
             <div className="how-it-works">

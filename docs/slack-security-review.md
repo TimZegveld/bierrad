@@ -150,3 +150,14 @@ The real Worker/SQLite/alarms Slack suite now also runs for water: start, author
 The owner reported that winners saw a blue mention in the thread result but received no notification. Slack derives mention notifications from the top-level `text`, not from `user` elements in `blocks`, and our fallback carried only escaped names. The thread result (`resultBody`) and the review reply (`reviewBody`) now write the same server-frozen, regex-validated identities as `<@U…>` in the fallback; every other part, including manual names, is still escaped, so `<!channel>`, `<@…>` or links from names cannot become markup. `parse: none`, `link_names: false`, no broadcast or unfurls, unchanged recipients (the frozen `mentionIds` that already rendered as mention elements) and no new scopes, endpoints, data or dependencies. Reviewed against SECURITY.md; it remains unchanged. Review texts stay escaped in the fallback. The settled call (`chat.update`, never notifies) is out of scope.
 
 Tests: unit coverage for the exact mention set in the fallback, an escaped injected manual name, legacy jobs and invalid identities without any `<@`/`<!`, and for the review reply exactly one mention with escaped texts and an escaped manual name; the real Worker suites assert the fallback mention for the Slack winner in both the result and the review reply, and literal text for the manual one. Remaining acceptance check: a real draw in Slack showing the notification.
+
+## "Start met Slack" removed (2026-10-07)
+
+Requested by the owner; reviewed against every SECURITY.md section, which now records the removal. Nothing is weakened: an attack surface disappears.
+
+- **Removed:** the Bierrad login start (`/auth/slack/beer`), plain and `join-…` login cookies, `/auth/slack/join`, `/api/join`, the session join link and personal session links, the host commands `slackImport`, `slackManual`, `slackRetry` and `setReviews`, the `spectatorCapability` field of `setScheduledDraw` and the spectator-link reminder with its stored raw capability, the host Slack DTO, the permalink parser and the frontend Slack controls, auto refresh and join page.
+- **Fail closed:** `slackAllowed` accepts only the channel-round grant. Sessions started with Sign in with Slack before this change keep working as plain manual sessions but can no longer read reactions or post. A pending reminder or result job of such a session is never sent. Old `#/slack` and `#/meedoen/…` routes open the local Bierrad and drop the fragment from the address bar.
+- **Unchanged:** channel binding, personal channel links, channel rounds, reviews of channel rounds, limits, scopes and secrets. No new dependency, storage, logging or public variable.
+
+Tests: the Worker refuses `/api/join`, every removed host command and a schedule with a spectator link (400); `/auth/slack/beer` never redirects to Slack; login cookies without a channel or member purpose are refused; `slackAllowed` refuses the old login grant.
+

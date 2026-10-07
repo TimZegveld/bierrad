@@ -163,43 +163,26 @@ Tijdelijke toegang is niet hetzelfde als gebruikersauthenticatie. Links kunnen i
 
 ## Later
 
-Wekelijks herhalende planning en automatische kanaaloproepen zijn niet geïmplementeerd; alleen de optionele kijklink-herinnering in de bestaande thread. Er is geen permanente medewerkerhistorie.
+Wekelijks herhalende planning en automatische kanaaloproepen zijn niet geïmplementeerd. Er is geen permanente medewerkerhistorie.
 
 
-## Automatisch verversen en starten
+## Automatisch starten
 
-Na Slack-import kun je **Automatisch verversen · elke 5 minuten** aanvinken. Dit werkt zolang dit hostscherm openstaat; sluiten of herladen zet de schakelaar uit. Het pauzeert bij verbroken verbinding, tijdens een import/trekking en vanaf twee minuten voor een geplande start. Handmatige toevoegingen blijven behouden.
+Een live-host kan onder **Automatisch starten** een datum en tijd kiezen, standaard de eerstvolgende vrijdag om **15.45 Nederlandse tijd (Europe/Amsterdam)**. Zet de start expliciet aan; uitzetten annuleert de planning. Dit is één trekking, geen wekelijkse herhaling. Je kunt tot 30 dagen vooruit plannen. Een nog geldige sessie wordt zo nodig verlengd tot één uur na de start; een eerdere planning verkort de bestaande geldigheid niet. Een verlopen sessie kan niet worden heropend. Annuleren of handmatig draaien draait een toegekende verlenging niet terug. De planning blijft bij herladen behouden en de server start ook zonder open hostscherm. Handmatig draaien of resetten annuleert de planning. Bij een lege lijst, een bezette sessie of meer dan een minuut te late alarmbezorging wordt de start overgeslagen; de host kan opnieuw plannen.
 
-Een live-host kan onder **Automatisch starten** een datum en tijd kiezen, standaard de eerstvolgende vrijdag om **15.45 Nederlandse tijd (Europe/Amsterdam)**. Zet de start expliciet aan; uitzetten annuleert de planning. Dit is één trekking, geen wekelijkse herhaling. Je kunt tot 30 dagen vooruit plannen. Een nog geldige sessie wordt zo nodig verlengd tot één uur na de start; een eerdere planning verkort de bestaande geldigheid niet. De Slack-toegang moet tot die tijd geldig zijn. Een verlopen sessie kan niet worden heropend. Annuleren of handmatig draaien draait een toegekende verlenging niet terug. De planning blijft bij herladen behouden en de server start ook zonder open hostscherm. Handmatig draaien of resetten annuleert de planning.
+## Slack
 
-Bij een Slack-sessie staat bij het plannen **Stuur 2 minuten vooraf de kijklink in de Slack-thread** standaard aan. De server plaatst dan twee minuten voor de start (of meteen, als de start dichterbij ligt maar nog minstens 30 seconden weg is) een kort bericht met de kijklink in de oorspronkelijke thread, zodat collega's op tijd kunnen meekijken. Iedereen die die thread kan lezen kan daarna tot het einde van de sessie meekijken. Dit werkt alleen vanuit de volledige hostlink, omdat alleen die de kijklink bevat. De server controleert de link tegen de opgeslagen hash, bouwt de URL zelf op uit `FRONTEND_URL` en bewaart de ruwe kijklink alleen tot het bericht is geplaatst of de planning verandert.
+Slack-deelname loopt uitsluitend via een aan een kanaal gekoppeld rad (zie hieronder). **Start met Slack** (een vrijdagbericht van een collega koppelen) is op 2026-10-07 verwijderd, met de bijbehorende deelnamelinks (`#/meedoen/…`) en kijklink-herinnering. Oude links naar `#/slack` en `#/meedoen/…` openen het lokale Bierrad; sessies die zo gestart zijn houden geen Slack-toegang meer.
 
-Vlak vóór de automatische trekking controleert de server de Slack-reacties nogmaals, ook als de vijfminutenrefresh uitstaat. Daarna kiest dezelfde server-drawoperatie de winnaars en publiceert de normale threaduitslag. De laatste controle kan de daadwerkelijke start iets vertragen. Bij ophaalfouten, verlopen Slack-toegang, een lege lijst, een bezette sessie of meer dan een minuut te late alarmbezorging wordt de start overgeslagen; de host kan opnieuw plannen. Er wordt niet stilzwijgend met een oude lijst gedraaid. Bij een crash tijdens de eindcontrole vervalt de poging uiterlijk na twee minuten. Standalone blijft handmatig werken.
+[Appmanifest en veilige instelling](docs/slack-setup.md) · [Security review](docs/slack-security-review.md)
 
-## Slack-deelnemers en threaduitslag
-
-**Reviews (bier).** In een Slack-sessie staat **⭐ Reviews na de trekking** standaard aan (stemtijd 30 minuten, aan te passen bij de Slack-instellingen van de host). De uitslag in de thread krijgt dan een **Open de ronde**-link. Daar log je in met Slack of kijk je alleen mee. Een minuut na de trekking geven deelnemers de andere halers anoniem 1–5 sterren. De reviews komen als los bericht in de thread. Een nieuwe trekking stopt een lopende stemronde. Iedereen die de thread leest, kan met die link meekijken tot de sessie afloopt.
-
-Een volwaardig lid van de Slack-workspace start een Slack-sessie met **Start met Slack** (Sign in with Slack). Een gewone publieke host, gast of externe gebruiker heeft geen Slack-starttoegang. Kies Slack, plak een berichtlink en haal de `:beers:`-reactors op. Refresh volgt de reacties en behoudt handmatige toevoegingen; gelijke namen krijgen onderscheidende labels met stabiele tijdelijke IDs. Na de trekking post de server de officiële winnaars automatisch in de oorspronkelijke thread, ook als de host gesloten is. Geïmporteerde Slack-winnaars krijgen een echte @vermelding; handmatige deelnemers blijven gewone tekst. Fouten veranderen de uitslag niet; alleen zeker afgewezen posts kunnen gecontroleerd opnieuw worden aangeboden. Bij onzekere aflevering voorkomt Bierrad herverzending.
-
-[Appmanifest en veilige instelling](docs/slack-setup.md) · [Security review en tien antwoorden](docs/slack-security-review.md)
-
-```text
-Sign in with Slack (alleen server) → geautoriseerde tijdelijke Slack-sessie
-SlackReactionParticipantSource (alleen server)
-          ↓ veilige sessie-ID's + namen
-SessionController → Draw Engine → DrawInstruction → Wheel Renderers
-                          ↓ na alle spins, via durable alarm
-                  officiële uitslag → oorspronkelijke Slack-thread
-```
-
-`worker/slack` bevat de getypeerde client, parser, deelnemersbron, private mapping en resultaattekst. `worker/slack/login.ts` doet de inlogflow via `GET /auth/slack/beer` en `GET /auth/slack/callback`; hostcommando's zijn `slackImport` (optioneel permalink, zonder link = refresh), `slackManual`, `slackRetry`. Ook gemanipuleerde spectatorrequests worden afgewezen. Spectator-DTO's bevatten geen Slack-metadata. De raderen/selectie zijn ongewijzigd en blijven zonder netwerk of Slack functioneren.
+`worker/slack` bevat de getypeerde client, deelnemersbron, private mapping en resultaattekst; `worker/slack/login.ts` doet Sign in with Slack, alleen om een kanaal te koppelen of voor een persoonlijke kanaallink. De raderen/selectie zijn ongewijzigd en blijven zonder netwerk of Slack functioneren.
 
 ## Koffierad ☕
 
 Naast Bierrad is er **Koffierad: wie haalt de volgende koffie?** Kies bovenaan je variant of open de site met `#/coffee` (bier: `#/beer`; de bestaande lege route blijft Bierrad). Beide gebruiken dezelfde radlogica. Koffie heeft warme crème-/espressokleuren en eigen teksten en een apart opgeslagen deelnemerslijst voor handmatig herstel. Beide varianten starten leeg met de standaard aantalvoorkeur. Wisselen start een lokale variant; tijdens draaien is de wissel geblokkeerd. Er is geen permanente uitslaghistorie.
 
-De variant van een live-sessie staat vanaf creatie vast op de server; host en kijkers ontvangen hetzelfde thema. Oude sessies en links blijven bier. `POST /api/sessions` accepteert `{}` voor bier of een body met uitsluitend `variant`, met waarde `beer` of `coffee`. Koffie krijgt een **eigen Slack-app** met eigen servercredentials, `:coffee:`-reacties en koffie-uitslagen. **Start met Slack** (een vrijdagbericht koppelen) is er alleen voor het Bierrad; het Koffierad gaat uitsluitend via [een gekoppeld kanaal](#live-koffierad-per-slack-kanaal) en `/koffierad`. Oude links naar `#/coffee-slack` openen het Koffierad. Zie [Koffierad instellen](docs/slack-setup.md#aparte-koffierad-app).
+De variant van een live-sessie staat vanaf creatie vast op de server; host en kijkers ontvangen hetzelfde thema. Oude sessies en links blijven bier. `POST /api/sessions` accepteert `{}` voor bier of een body met uitsluitend `variant`, met waarde `beer` of `coffee`. Koffie krijgt een **eigen Slack-app** met eigen servercredentials, `:coffee:`-reacties en koffie-uitslagen, uitsluitend via [een gekoppeld kanaal](#live-koffierad-per-slack-kanaal) en `/koffierad`. Oude links naar `#/coffee-slack` openen het Koffierad. Zie [Koffierad instellen](docs/slack-setup.md#aparte-koffierad-app).
 
 ### Live Koffierad per Slack-kanaal
 

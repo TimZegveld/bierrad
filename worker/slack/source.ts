@@ -7,57 +7,6 @@ export interface SlackSource {
 }
 const timestamp = /^\d{10}\.\d{6}$/;
 const channel = /^[CG][A-Z0-9]{8,20}$/;
-export function parseSlackPermalink(
-  raw: unknown,
-  reactionName: SlackSource["reactionName"] = "beers",
-): SlackSource {
-  if (
-    typeof raw !== "string" ||
-    raw.length > 1024 ||
-    raw !== raw.trim() ||
-    raw.includes("/../") ||
-    raw.includes("/./") ||
-    /[%\\\s]/.test(raw)
-  )
-    throw new SlackError("slack_link");
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    throw new SlackError("slack_link");
-  }
-  const match = /^\/archives\/([CG][A-Z0-9]{8,20})\/p(\d{10})(\d{6})$/.exec(
-    url.pathname,
-  );
-  if (
-    url.protocol !== "https:" ||
-    url.port ||
-    url.username ||
-    url.password ||
-    url.hash ||
-    !/^[a-z0-9][a-z0-9-]*\.slack\.com$/.test(url.hostname) ||
-    !match
-  )
-    throw new SlackError("slack_link");
-  const keys = [...url.searchParams.keys()];
-  if (
-    new Set(keys).size !== keys.length ||
-    keys.some((k) => !["thread_ts", "cid"].includes(k))
-  )
-    throw new SlackError("slack_link");
-  const parent = url.searchParams.get("thread_ts");
-  if (
-    (parent && !timestamp.test(parent)) ||
-    (url.searchParams.has("thread_ts") && !parent) ||
-    (url.searchParams.has("cid") && url.searchParams.get("cid") !== match[1])
-  )
-    throw new SlackError("slack_link");
-  return {
-    channelId: match[1],
-    parentMessageTs: parent ?? `${match[2]}.${match[3]}`,
-    reactionName,
-  };
-}
 export interface SlackPerson {
   slackId: string;
   name: string;

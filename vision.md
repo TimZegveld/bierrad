@@ -485,7 +485,7 @@ Collega's kunnen op meerdere browsers en de kantoor-tv naar dezelfde live trekki
 
 ## Host en toeschouwers
 
-Een host beheert handmatig de deelnemers, kiest het aantal bierhalers, start alle raderen tegelijk en kan de trekking resetten. Via een privé-startlink kan een bevoegde organisator Slack-reactors laden en de uitslag automatisch in de oorspronkelijke thread laten plaatsen. Toeschouwers kijken alleen mee. Host en kijkers hebben verschillende tijdelijke links via URL-fragmenten; zonder geldige toegang zijn deelnemers niet zichtbaar. Nieuwe sessies verlopen standaard na 24 uur of wanneer de host ze beëindigt. Een geplande start verlengt een nog geldige sessie zo nodig tot één uur na de start, binnen de geldigheid van Slack-toegang. De kantoor-tv is een toeschouwer en hoeft geen bediening te tonen.
+Een host beheert handmatig de deelnemers, kiest het aantal bierhalers, start alle raderen tegelijk en kan de trekking resetten. Toeschouwers kijken alleen mee. Host en kijkers hebben verschillende tijdelijke links via URL-fragmenten; zonder geldige toegang zijn deelnemers niet zichtbaar. Nieuwe sessies verlopen standaard na 24 uur of wanneer de host ze beëindigt. Een geplande start verlengt een nog geldige sessie zo nodig tot één uur na de start. De kantoor-tv is een toeschouwer en hoeft geen bediening te tonen.
 
 ## Hetzelfde rad, één autoriteit
 
@@ -523,4 +523,4 @@ Het kanaal blijft rustig: elke ronde is daar één bericht dat meegroeit, van op
 
 Na een ronde mogen de deelnemers de haler een cijfer geven: 1–5 sterren, met optioneel een korte anonieme tekst, net als een review van een verblijf. Speelse labels per drankje ("Slootwater" tot "Barista-niveau") maken het een grap en geen beoordelingsgesprek. Je logt één keer in met Slack en bewaart je persoonlijke link; daarmee kijk je mee en stem je in elke ronde. Je stemt alleen als je meedeed, één keer, en nooit op jezelf. Als iedereen gestemd heeft of de tijd om is, verschijnen de reviews anoniem in de thread en krijgt de oproep zijn sterren. Daarna is alles vergeten: geen historie, geen gemiddelden over weken. Gedeelde schermen en ingelogde collega's zien alleen hoeveel mensen gestemd hebben.
 
-Bierrad doet hetzelfde voor elke trekking van een Slack-sessie. De host zet reviews aan of uit en kiest de stemtijd (standaard 30 minuten, want bier halen duurt langer). De deelnamelink staat bij de uitslag in de thread. Je beoordeelt alle andere halers, nooit jezelf. Een nieuwe trekking stopt een lopende stemronde. Uitslag en reviews zijn losse berichten in de thread; het oproepbericht is van een collega en blijft onaangeroerd.
+Het losse "Start met Slack" voor Bierrad, met een vrijdagbericht van een collega, is verdwenen: daar kon je pas na de trekking inloggen om te reviewen. Slack loopt voortaan alleen via een gekoppeld kanaal, waar de bot zelf de oproep plaatst.

@@ -235,6 +235,31 @@ test(
         "/api/session",
       ])
         assert.equal((await call(path)).status, 404);
+      // The removed Slack start: no join API, no Slack host commands, no login start.
+      assert.equal((await call("/api/join", created.hostCapability)).status, 404);
+      for (const type of ["slackImport", "slackManual", "slackRetry", "setReviews"])
+        assert.equal(
+          (await call("/api/command", created.hostCapability, { type, revision: 0 }))
+            .status,
+          400,
+          type,
+        );
+      assert.equal(
+        (
+          await call("/api/command", created.hostCapability, {
+            type: "setScheduledDraw",
+            startAt: new Date(Date.now() + 600000).toISOString(),
+            spectatorCapability: created.spectatorCapability,
+            revision: 0,
+          })
+        ).status,
+        400,
+      );
+      const start = await mf.dispatchFetch("http://localhost/auth/slack/beer", {
+        redirect: "manual",
+      });
+      assert.ok([302, 303, 503].includes(start.status));
+      assert.doesNotMatch(start.headers.get("location") ?? "", /slack\.com/);
       const invalid = created.hostCapability.slice(0, 33) + "0".repeat(64);
       assert.equal((await call("/api/session", invalid)).status, 404);
       assert.equal(

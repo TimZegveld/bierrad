@@ -2,15 +2,18 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { SlackApiClient, SlackError } from "../slack/api";
 import {
-  parseSlackPermalink,
   SlackReactionParticipantSource,
+  type SlackSource,
 } from "../slack/source";
 import { reconcile, queueResult, resultBody, postResult } from "../slack/state";
 import { newSession, mutate, advance, publicSession } from "../session";
-import { LOGIN_GRANT, slackAllowed, slackCeiling } from "../slack/access";
+import { CHANNEL_GRANT, slackAllowed } from "../slack/access";
 import { randomHex, hashSecret } from "../auth";
-const link = "https://synthetic.slack.com/archives/C00000001/p1234567890123456";
-const source = parseSlackPermalink(link);
+const source: SlackSource = {
+  channelId: "C00000001",
+  parentMessageTs: "1234567890.123456",
+  reactionName: "beers",
+};
 const success = (data: object) => Response.json({ ok: true, ...data });
 const person = (id: string, name: string, extra = {}) => ({
   id,
@@ -36,35 +39,6 @@ function client(
     return handler(url, init!);
   }) as typeof fetch);
 }
-test("strict permalink parser normalizes thread parents and rejects SSRF/ambiguous inputs", () => {
-  assert.deepEqual(source, {
-    channelId: "C00000001",
-    parentMessageTs: "1234567890.123456",
-    reactionName: "beers",
-  });
-  assert.equal(
-    parseSlackPermalink(link + "?thread_ts=1234567890.000001&cid=C00000001")
-      .parentMessageTs,
-    "1234567890.000001",
-  );
-  for (const value of [
-    "http://synthetic.slack.com/archives/C00000001/p1234567890123456",
-    link.replace("synthetic.slack.com", "slack.com.evil.invalid"),
-    link.replace("synthetic.slack.com", "127.0.0.1"),
-    link.replace("synthetic.slack.com", "user:pass@synthetic.slack.com"),
-    link + "#secret",
-    link + "?url=https://evil.invalid",
-    link + "?thread_ts=bad",
-    link + "?thread_ts=",
-    link + "?thread_ts=1234567890.000001&thread_ts=1234567890.000002",
-    link + "?cid=C00000002",
-    link.replace("/archives/", "/x/../archives/"),
-    link + " ",
-    link.replace("archives", "%61rchives"),
-    link.slice(0, -1),
-  ])
-    assert.throws(() => parseSlackPermalink(value), SlackError);
-});
 test("complete reactors are deduplicated; humans/guests/external users retained, bots/deleted filtered, safe name fallback", async () => {
   const users = [
     "U00000001",
@@ -238,50 +212,30 @@ test("refresh retains opaque IDs and manual additions, distinguishes equal names
     ["Alice"],
   );
 });
-test("login sessions need bot and login secrets; legacy start-link grants and public sessions get no Slack rights", async () => {
+test("only channel rounds hold Slack rights; old login and start-link grants fail closed", async () => {
   const login = {
     SLACK_BOT_TOKEN: "synthetic",
     SLACK_CLIENT_ID: "1000000000.2000000000",
     SLACK_CLIENT_SECRET: "synthetic-client-secret",
   };
-  assert.equal(slackAllowed(LOGIN_GRANT, login), true);
+  assert.equal(slackAllowed(CHANNEL_GRANT, login), true);
   for (const missing of [
     "SLACK_BOT_TOKEN",
     "SLACK_CLIENT_ID",
     "SLACK_CLIENT_SECRET",
   ])
     assert.equal(
-      slackAllowed(LOGIN_GRANT, { ...login, [missing]: undefined }),
+      slackAllowed(CHANNEL_GRANT, { ...login, [missing]: undefined }),
       false,
     );
   assert.equal(
-    slackAllowed(LOGIN_GRANT, { ...login, SLACK_CLIENT_ID: "bad" }),
+    slackAllowed(CHANNEL_GRANT, { ...login, SLACK_CLIENT_ID: "bad" }),
     false,
   );
-  assert.equal(
-    slackCeiling({ grantHash: LOGIN_GRANT, grantExpiresAt: 1234 }, login),
-    1234,
-  );
-  assert.equal(
-    slackCeiling(
-      { grantHash: LOGIN_GRANT, grantExpiresAt: 1234 },
-      { ...login, SLACK_CLIENT_SECRET: undefined },
-    ),
-    undefined,
-  );
-  // Former start-link sessions stored a 64-hex grant hash; it no longer
-  // confers Slack rights, even if an old start-grant secret is still set.
-  const hash = await hashSecret(randomHex());
-  const legacy = {
-    ...login,
-    SLACK_START_GRANT: JSON.stringify({ hash, expiresAt: Date.now() + 10000 }),
-  };
-  assert.equal(slackAllowed(hash, legacy), false);
-  assert.equal(slackCeiling({ grantHash: hash }, legacy), undefined);
-  assert.equal(
-    slackCeiling({ grantHash: hash, grantExpiresAt: Date.now() + 10000 }, login),
-    undefined,
-  );
+  // Sessions once started with Sign in with Slack, and former start-link
+  // sessions with a 64-hex grant hash, keep no Slack rights.
+  assert.equal(slackAllowed("slack-login", login), false);
+  assert.equal(slackAllowed(await hashSecret(randomHex()), login), false);
   assert.equal(slackAllowed(undefined, login), false);
 });
 test("posting freezes official winners/target; thread-only safe singular/plural; failure never changes draw", async () => {
@@ -458,55 +412,3 @@ test("mentions use frozen server identity, never a display name or browser-suppl
   assert.ok(!/<[@!]/.test(resultBody(invalid).text));
 });
 
-test("refresh after manual mode retains Slack identities without duplicating participants", () => {
-  const now = Date.now();
-  const record = newSession("host", "spectator", now);
-  record.slack = { grantHash: "hash", mapping: {} };
-  const people = [
-    { slackId: "U00000001", name: "Alice" },
-    { slackId: "U00000002", name: "Alice" },
-  ];
-  reconcile(record, source, people, now);
-  const ids = { ...record.slack.mapping };
-  mutate(
-    record,
-    "host",
-    { type: "slackManual", revision: record.revision },
-    now,
-  );
-  assert.equal(record.slack.source, undefined);
-  mutate(
-    record,
-    "host",
-    {
-      type: "setParticipants",
-      revision: record.revision,
-      names: ["Alice", "Alice (2)", "Bob"],
-    },
-    now,
-  );
-  mutate(record, "host", { type: "startDraw", revision: record.revision }, now);
-  assert.equal(record.slack.job, undefined);
-  advance(record, now + 11000);
-  mutate(
-    record,
-    "host",
-    { type: "reset", revision: record.revision },
-    now + 11000,
-  );
-  for (let attempt = 0; attempt < 3; attempt++) {
-    reconcile(record, source, people, now + 11000);
-    assert.deepEqual(
-      record.session.participants.map((p) => p.name),
-      ["Bob", "Alice", "Alice (2)"],
-    );
-    assert.deepEqual(record.slack.mapping, ids);
-  }
-  reconcile(record, source, [{ ...people[0], name: "Alex" }], now + 11000);
-  assert.deepEqual(
-    record.session.participants.map((p) => p.name),
-    ["Bob", "Alex"],
-  );
-  assert.equal(record.slack.mapping[people[0].slackId], ids[people[0].slackId]);
-  assert.ok(!JSON.stringify(publicSession(record)).includes("U00000001"));
-});

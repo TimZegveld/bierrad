@@ -9,7 +9,6 @@ import { LocalWinnerCountPreference } from "../services/WinnerCountPreference";
 import { loadWeights, saveWeights } from "../services/RigPreference";
 import { LocalSessionController } from "../sessions/LocalSessionController";
 import { FinalResult } from "../components/FinalResult";
-import { SlackControls } from "../components/SlackControls";
 
 test("coffee roster, count and optional weights never overwrite legacy beer storage", async (t) => {
   const data = new Map<string, string>();
@@ -47,7 +46,7 @@ test("coffee roster, count and optional weights never overwrite legacy beer stor
   assert.deepEqual(loadWeights("coffee"), { b: 4 });
   assert.ok(data.has("bierrad.participants.v1"));
 });
-test("coffee setup, finale and Slack controls consistently say coffee halen", async () => {
+test("coffee setup and finale consistently say coffee halen", async () => {
   const controller = new LocalSessionController();
   await controller.setParticipants([{ id: "a", name: "Test A" }]);
   const render = (child: import("react").ReactNode) =>
@@ -70,16 +69,6 @@ test("coffee setup, finale and Slack controls consistently say coffee halen", as
   );
   assert.match(result, /Jij mag koffie halen!/);
   assert.doesNotMatch(result, /bier|zetten|🍻/i);
-  const slack = render(
-    createElement(SlackControls, {
-      status: { enabled: true, source: "slack", importing: false, count: 0 },
-      locked: false,
-      async onImport() {},
-      async onManual() {},
-    }),
-  );
-  assert.match(slack, /:coffee:/);
-  assert.doesNotMatch(slack, /:beers:|🍻/);
   controller.dispose();
 });
 test("local routes, reactions and Slack apps come from one theme table", async () => {
@@ -103,10 +92,13 @@ test("local routes, reactions and Slack apps come from one theme table", async (
     assert.equal(localVariant(hash), undefined, hash);
   // Saved water links open the Koffierad instead.
   assert.equal(retiredRoute("#/water"), "#/coffee");
-  // Old Slack starts of water and coffee too: only the Bierrad starts with Slack.
+  // Old Slack starts of water and coffee too.
   for (const hash of ["#/water-slack", "#/water-slack/denied", "#/coffee-slack", "#/coffee-slack/busy"])
     assert.equal(retiredRoute(hash), "#/coffee", hash);
-  for (const hash of ["", "#/coffee", "#/slack", "#/water/", "#/waterrad", "#/koffie/x"])
+  // The removed Bierrad Slack start and its join links open the local Bierrad.
+  for (const hash of ["#/slack", "#/slack/denied", `#/meedoen/${"a".repeat(32)}.${"b".repeat(64)}`, "#/meedoen-login/busy"])
+    assert.equal(retiredRoute(hash), "#/beer", hash);
+  for (const hash of ["", "#/coffee", "#/water/", "#/waterrad", "#/koffie/x", "#/meedoen"])
     assert.equal(retiredRoute(hash), undefined, hash);
   assert.equal(themes.beer.slackApp, "beer");
   assert.equal(themes.coffee.slackApp, "coffee");
@@ -123,7 +115,7 @@ test("the switcher offers only the Bierrad and Koffierad", async () => {
   }
   controller.dispose();
 });
-test("water setup, finale and Slack controls say water halen and count only :droplet:", async () => {
+test("water setup and finale say water halen", async () => {
   const controller = new LocalSessionController();
   await controller.setParticipants([{ id: "a", name: "Test A" }]);
   const render = (child: import("react").ReactNode) =>
@@ -147,16 +139,6 @@ test("water setup, finale and Slack controls say water halen and count only :dro
   assert.match(result, /Jij mag water halen!/);
   assert.match(result, /Rondje gemeentepils van de zaak! Hydrateer ons trots\./);
   assert.doesNotMatch(result, /bier|koffie/i);
-  const slack = render(
-    createElement(SlackControls, {
-      status: { enabled: true, source: "slack", importing: false, count: 0 },
-      locked: false,
-      async onImport() {},
-      async onManual() {},
-    }),
-  );
-  assert.match(slack, /:droplet:/);
-  assert.doesNotMatch(slack, /:beers:|:coffee:/);
   controller.dispose();
 });
 test("a Koekrad round takes its word: titles are one plain word, never markup", async () => {

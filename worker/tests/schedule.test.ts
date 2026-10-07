@@ -151,31 +151,3 @@ test("24-hour sessions extend to a scheduled start plus an hour without reviving
   assert.equal(r.expiresAt, now);
 });
 
-test("Slack planning requires grant validity through the extra hour and rejects atomically", () => {
-  const r = setup(),
-    hour = 3600000;
-  r.slack = {
-    grantHash: "synthetic",
-    grantExpiresAt: now + 72 * hour,
-    mapping: {},
-  };
-  const schedule = (at: number) =>
-    mutate(
-      r,
-      "host",
-      {
-        type: "setScheduledDraw",
-        startAt: new Date(at).toISOString(),
-        revision: r.revision,
-      },
-      now,
-    );
-  schedule(now + 71 * hour);
-  assert.equal(r.expiresAt, r.slack.grantExpiresAt);
-  const before = structuredClone(r);
-  assert.throws(() => schedule(now + 71 * hour + 1));
-  assert.deepEqual(r, before);
-  assert.ok(!JSON.stringify(publicSession(r)).includes("grantExpiresAt"));
-  delete r.slack.grantExpiresAt;
-  assert.throws(() => schedule(now + 73 * hour));
-});

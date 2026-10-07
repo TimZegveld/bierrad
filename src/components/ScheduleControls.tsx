@@ -3,39 +3,26 @@ import {
   SCHEDULE_RETENTION_MS,
 } from "../../shared/retention";
 import { useState } from "react";
-import type { ScheduledDraw, SlackHostStatus } from "../../shared/protocol";
+import type { ScheduledDraw } from "../../shared/protocol";
 import {
   amsterdamInput,
   nextFridayInput,
   parseAmsterdamInput,
   formatScheduledTime,
 } from "../utils/schedule";
-const reminderLabels = {
-  pending: "📣 De kijklink gaat 2 minuten voor de start in de Slack-thread.",
-  posting: "📣 De kijklink wordt in de Slack-thread geplaatst…",
-  posted: "✓ De kijklink staat in de Slack-thread.",
-  failed: "De kijklink kon niet in Slack worden geplaatst. Deel hem zelf.",
-  uncertain:
-    "Controleer de Slack-thread: of de kijklink is geplaatst is onzeker. We sturen niet opnieuw om dubbele berichten te voorkomen.",
-  skipped: "De kijklink is niet in Slack geplaatst. Deel hem zelf.",
-};
 export function ScheduleControls({
   plan,
   expiresAt,
   locked,
   clockOffsetMs = 0,
-  slack,
   onSave,
 }: {
   plan?: ScheduledDraw;
   expiresAt: string;
   locked: boolean;
   clockOffsetMs?: number;
-  /** Present only for Slack-linked sessions with working Slack access. */
-  slack?: { canShare: boolean; reminder?: SlackHostStatus["reminder"] };
-  onSave: (startAt: string | null, shareSpectatorLink: boolean) => Promise<void>;
+  onSave: (startAt: string | null) => Promise<void>;
 }) {
-  const [share, setShare] = useState(true);
   const [value, setValue] = useState(() =>
     plan
       ? amsterdamInput(Date.parse(plan.startAt))
@@ -44,10 +31,6 @@ export function ScheduleControls({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const at = parseAmsterdamInput(value);
-  const reminder =
-    plan && slack?.reminder?.startAt === plan.startAt
-      ? slack.reminder
-      : undefined;
   const valid =
     Number.isFinite(at) &&
     at > Date.now() + clockOffsetMs + 2000 &&
@@ -58,7 +41,7 @@ export function ScheduleControls({
     setBusy(true);
     setError("");
     try {
-      await onSave(startAt, !!slack?.canShare && share);
+      await onSave(startAt);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Plannen is niet gelukt.");
     } finally {
@@ -77,7 +60,6 @@ export function ScheduleControls({
           <p role="status">
             Ingepland: {formatScheduledTime(plan.startAt)} (Nederlandse tijd).
           </p>
-          {reminder && <p role="status">{reminderLabels[reminder.status]}</p>}
           <button disabled={locked || busy} onClick={() => void save(null)}>
             Automatische start uitzetten
           </button>
@@ -86,9 +68,8 @@ export function ScheduleControls({
         <>
           {plan?.status === "skipped" && (
             <p role="status">
-              De automatische start is overgeslagen: ophalen is niet gelukt, het
-              rad was niet klaar of de start kwam te laat. Controleer de
-              deelnemers en plan opnieuw.
+              De automatische start is overgeslagen: het rad was niet klaar of
+              de start kwam te laat. Controleer de deelnemers en plan opnieuw.
             </p>
           )}
           <label htmlFor="scheduled-start">Datum en tijd · Nederland</label>
@@ -116,24 +97,6 @@ export function ScheduleControls({
               : één uur na de start.
             </p>
           )}
-          {slack && (
-            <>
-              <label className="share-toggle">
-                <input
-                  type="checkbox"
-                  checked={slack.canShare && share}
-                  disabled={!slack.canShare || locked || busy}
-                  onChange={(event) => setShare(event.target.checked)}
-                />
-                Stuur 2 minuten vooraf de kijklink in de Slack-thread
-              </label>
-              <p className="storage-note">
-                {slack.canShare
-                  ? "Iedereen in dat Slack-kanaal kan dan tot het einde van de sessie meekijken."
-                  : "Open de volledige hostlink (met kijklink) om de kijklink via Slack te delen."}
-              </p>
-            </>
-          )}
           <button
             disabled={locked || busy || !valid}
             onClick={() => void save(new Date(at).toISOString())}
@@ -143,9 +106,7 @@ export function ScheduleControls({
         </>
       )}
       <p className="storage-note">
-        Eenmalig voor dit live rad, ook als je dit scherm sluit. Een gekoppeld
-        Slack-bericht wordt vlak voor de start nog gecontroleerd; daardoor kan
-        het rad iets later starten. Nieuwe sessies blijven standaard 24 uur
+        Eenmalig voor dit live rad, ook als je dit scherm sluit. Nieuwe sessies blijven standaard 24 uur
         actief; een latere planning verlengt dat tot één uur na de start. Deze
         sessie verloopt nu {formatScheduledTime(expiresAt)}. Handmatig draaien
         of resetten annuleert de planning.

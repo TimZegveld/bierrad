@@ -38,16 +38,6 @@ export const DEFAULT_REVIEW_SETTINGS: ReviewSettings = {
 export function validReviewMinutes(value: unknown): value is number {
   return (REVIEW_MINUTE_CHOICES as readonly unknown[]).includes(value);
 }
-/** Host-started Slack sessions (Bierrad): fetching takes longer than coffee. */
-export const SESSION_REVIEW_MINUTE_CHOICES = [15, 30, 60, 120] as const;
-export const DEFAULT_SESSION_REVIEW_SETTINGS: ReviewSettings = {
-  enabled: true,
-  minutes: 30,
-};
-export function validSessionReviewMinutes(value: unknown): value is number {
-  return (SESSION_REVIEW_MINUTE_CHOICES as readonly unknown[]).includes(value);
-}
-
 /** What shared screens may show while a round can be reviewed: counts only. */
 export interface ReviewProgress {
   closesAt: string;
@@ -61,20 +51,6 @@ export interface ReviewBallot {
   winners: { index: number; name: string }[];
   submitted: boolean;
 }
-/**
- * What a session's join link or personal link sees: never a Slack ID,
- * pseudonym or anyone else's vote.
- */
-export interface JoinStatus {
-  role: "join" | "member";
-  variant: WheelVariant;
-  minutes: number;
-  member?: { participating?: boolean; ballot?: ReviewBallot };
-}
-export type JoinCommand =
-  | { type: "review"; drawId: string; scores: number[]; texts: string[] }
-  | { type: "logout" };
-export type JoinResult = { type: "status"; status: JoinStatus } | { type: "loggedOut" };
 /** Aligned with the ballot's winners, in the same order. */
 export interface ReviewSubmission {
   scores: number[];

@@ -39,19 +39,9 @@ Stemmen opent een minuut na de finale (gevraagd door de eigenaar), en de stemtij
 - **Een mislukte of onzekere threadpost wordt niet herhaald** (hooguit één retry na een duidelijke weigering). Ook na een mislukte post verdwijnen de teksten.
 - **Een sleutel die pas tijdens de ronde wordt aangemaakt:** bestaande rondes gebruiken de sleutel die er bij hun start was. Opnieuw koppelen tijdens een open review maakt stemmen in die ronde onmogelijk.
 
-## Bierrad-sessies (PR 3)
+## Bierrad-sessies (PR 3, verwijderd)
 
-Bierrad-sessies die met Sign in with Slack zijn gestart, krijgen dezelfde reviews per trekking. Zie de laatste alinea van de review-sectie in SECURITY.md.
-
-| Oppervlak | Autorisatie | Opmerkingen |
-| --- | --- | --- |
-| `GET/POST /api/join` | Deelnamelink of persoonlijke link (256 bits, alleen de hash opgeslagen) | De deelnamelink ziet alleen `{role, variant, minutes}`. Een persoonlijke link ziet daarnaast de eigen deelname en het eigen stembiljet, en kan `review` en `logout`. Commando's met de deelnamelink geven 403. |
-| `POST /auth/slack/join` | Een geldige deelnamelink of persoonlijke link in een formulierbody | Gelijk aan de kanaallogin. Er gaan hooguit 30 logins per sessie per minuut, en alleen zolang reviews aanstaan. De logincookie bevat `join-<variant>-<locator>`, dus de login gebruikt de Slack-app van die sessie. |
-| `/api/session`, socket | De deelnamelink en persoonlijke links werken als kijklink | Er wordt nooit een hostcommando geaccepteerd (403). |
-| Hostcommando `setReviews` | Alleen de host van een Slack-loginsessie | `enabled` boolean, `minutes` ∈ {15, 30, 60, 120}. |
-
-- **Bewust risico:** de deelnamelink staat in de thread, bij de uitslag en in de opt-in herinnering. Iedereen die de thread leest, ook Slack Connect-leden, kan daardoor tot het einde van de sessie meekijken. De host-UI zegt dat, en reviews uitzetten stopt het. De ruwe deelnamelink blijft tot het einde van de sessie op de server, in de bewaarde URL.
-- **Gedrag:** een nieuwe trekking annuleert een open review zonder post. Het hoofdbericht wordt nooit bewerkt. Handmatige namen stemmen niet en krijgen geen sterren. Je beoordeelt alle andere Slack-halers.
+De reviews voor sessies die met Sign in with Slack waren gestart, met hun deelnamelink, `/api/join` en `/auth/slack/join`, zijn op 2026-10-07 samen met "Start met Slack" verwijderd. Zie `docs/slack-security-review.md`.
 
 ## Verificatie
 
@@ -75,23 +65,5 @@ Bierrad-sessies die met Sign in with Slack zijn gestart, krijgen dezelfde review
   - sluiten na de laatste stem, met de threadpost met quote en de bijgewerkte oproep met sterren;
   - geen stemmen, teksten, pseudoniemen, sleutel of link meer in de sessie;
   - uitloggen, en roteren dat alle persoonlijke links beëindigt.
-- **`src/tests/channel.test.ts`:** de routes `#/koffie-login/<reden>`, `#/meedoen/<link>` en `#/meedoen-login/<reden>`.
-- **`worker/tests/reviews.test.ts` (bier):**
-  - een uitnodiging alleen als er iemand iets te beoordelen heeft;
-  - een nieuwe trekking annuleert een open review;
-  - reviews uit betekent niets;
-  - de herinnering met deelnamelink;
-  - de logincookie met het doel `join`.
-- **`worker/tests/beer-reviews-live.test.ts`** (echte Worker en SQLite):
-  - de standaardinstelling en het aanpassen ervan door de host;
-  - een import plus een handmatige naam, met twee halers;
-  - een uitnodiging in de uitslag met de deelnamelink;
-  - de rechten van de deelnamelink: kijken wel, commando's en stemmen niet;
-  - geweigerde login-starts en vier persoonlijke logins;
-  - stembiljetten per persoon zonder jezelf en zonder de handmatige naam;
-  - voortgang, één stem per persoon en sluiten met een post in de thread;
-  - geen enkele `chat.update`, en wissen;
-  - annuleren bij opnieuw draaien;
-  - reviews uit: geen uitnodiging en geen login;
-  - uitloggen.
+- **`src/tests/channel.test.ts`:** de route `#/koffie-login/<reden>`.
 - **Visueel:** het stemformulier en de inlogkeuze, gecontroleerd in de ingebouwde browser op desktop en 375 px (koffie en water). Er is geen horizontale overloop, en verzenden zonder sterren geeft een foutmelding in de tekst.

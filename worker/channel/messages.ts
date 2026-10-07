@@ -228,6 +228,33 @@ export function settledCallBody(
     ...options,
   };
 }
+/**
+ * Slack-style emoji shortcodes, e.g. `:tim-koek:`, with at least one letter so
+ * times like `12:30:00` stay text. Unknown names simply show as text in Slack.
+ * Our own `bierrad_` emoji stay text, so a review cannot fake partial stars.
+ */
+const shortcode =
+  /:(?!bierrad_)(?=[a-z0-9_.+-]*[a-z])([a-z0-9_.+-]{1,100}):/g;
+/**
+ * A review text as literal text elements, with only shortcodes turned into
+ * emoji elements. Nothing else is parsed: no mentions, links or formatting.
+ */
+function reviewText(text: string) {
+  const elements: (
+    | { type: "text"; text: string }
+    | { type: "emoji"; name: string }
+  )[] = [];
+  let last = 0;
+  for (const match of text.matchAll(shortcode)) {
+    if (match.index > last)
+      elements.push({ type: "text", text: text.slice(last, match.index) });
+    elements.push({ type: "emoji", name: match[1] });
+    last = match.index + match[0].length;
+  }
+  if (last < text.length || !elements.length)
+    elements.push({ type: "text", text: text.slice(last) });
+  return elements;
+}
 /** The anonymous reviews of a round, as one reply in its thread. */
 export function reviewBody(
   channelId: string,
@@ -275,7 +302,7 @@ export function reviewBody(
         style: "bullet",
         elements: result.texts.map((text) => ({
           type: "rich_text_section",
-          elements: [{ type: "text", text }],
+          elements: reviewText(text),
         })),
       });
     for (const text of result.texts) plain.push(escape(`• ${text}`));

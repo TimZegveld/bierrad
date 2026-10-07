@@ -224,6 +224,29 @@ test("the review post quotes anonymous texts literally, in the thread only", () 
   assert.ok(!JSON.stringify(body).includes('"type":"broadcast"'));
 });
 
+test("review texts turn emoji shortcodes into emoji, nothing else", () => {
+  const bullet = (text: string) =>
+    (
+      reviewBody("C00000001", "1", [
+        { name: "Nick", mentionId: null, average: 3, count: 1, texts: [text] },
+      ]).blocks[0].elements as { elements?: { elements: unknown[] }[] }[]
+    )[1].elements![0].elements;
+  assert.deepEqual(bullet("Geen Krispy Kreme... :joeri-banger:"), [
+    { type: "text", text: "Geen Krispy Kreme... " },
+    { type: "emoji", name: "joeri-banger" },
+  ]);
+  assert.deepEqual(bullet(":tim-koek::thumbsup: top"), [
+    { type: "emoji", name: "tim-koek" },
+    { type: "emoji", name: "thumbsup" },
+    { type: "text", text: " top" },
+  ]);
+  // Times, uppercase, spaces, markup and our own star emoji stay literal text.
+  for (const text of ["om 12:30:00", ":Tim: of : x :", "<!here> :a b:", "::", ":bierrad_star_9:"])
+    assert.deepEqual(bullet(text), [{ type: "text", text }]);
+  // A shortcode cannot smuggle in a mention or link.
+  assert.deepEqual(bullet(":<@U00000001>:"), [{ type: "text", text: ":<@U00000001>:" }]);
+});
+
 test("review texts are cleaned and bounded; submissions are exact", () => {
   assert.equal(cleanReviewText("  a\t b \r\n\n\n c\u0000\u200B\u202Ed "), "a b\n\nc d");
   assert.equal(cleanReviewText("👩\u200D💻 top"), "👩\u200D💻 top");

@@ -229,12 +229,12 @@ export function settledCallBody(
   };
 }
 /**
- * Slack-style emoji shortcodes, e.g. `:tim-koek:`, with at least one letter so
- * times like `12:30:00` stay text. Unknown names simply show as text in Slack.
- * Our own `bierrad_` emoji stay text, so a review cannot fake partial stars.
+ * Slack-style emoji shortcodes, e.g. `:tim-koek:` or `:+1:`, never only digits
+ * so times like `12:30:00` stay text. Unknown names simply show as text in
+ * Slack. Our own `bierrad_` emoji stay text, so a review cannot fake stars.
  */
 const shortcode =
-  /:(?!bierrad_)(?=[a-z0-9_.+-]*[a-z])([a-z0-9_.+-]{1,100}):/g;
+  /:(?!bierrad_)(?=[a-z0-9_.+-]*[a-z_.+-])([a-z0-9_.+-]{1,100}):/g;
 /**
  * A review text as literal text elements, with only shortcodes turned into
  * emoji elements. Nothing else is parsed: no mentions, links or formatting.

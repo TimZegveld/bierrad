@@ -235,10 +235,11 @@ test("review texts turn emoji shortcodes into emoji, nothing else", () => {
     { type: "text", text: "Geen Krispy Kreme... " },
     { type: "emoji", name: "joeri-banger" },
   ]);
-  assert.deepEqual(bullet(":tim-koek::thumbsup: top"), [
+  assert.deepEqual(bullet(":tim-koek::+1: top :-1:"), [
     { type: "emoji", name: "tim-koek" },
-    { type: "emoji", name: "thumbsup" },
-    { type: "text", text: " top" },
+    { type: "emoji", name: "+1" },
+    { type: "text", text: " top " },
+    { type: "emoji", name: "-1" },
   ]);
   // Times, uppercase, spaces, markup and our own star emoji stay literal text.
   for (const text of ["om 12:30:00", ":Tim: of : x :", "<!here> :a b:", "::", ":bierrad_star_9:"])

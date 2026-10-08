@@ -49,8 +49,13 @@ import { slashHelp, validChannelName } from "./slash";
 import { cleanIntro, MIN_BEER_LEAD_MS } from "./beer";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-/** A round can be watched until this long after its start; it stops blocking once drawn. */
-export const ROUND_WATCH_MS = 3 * 60 * 1000;
+/** A round (and so its result) can be watched until this long after its start. */
+export const ROUND_WATCH_MS = 30 * 60 * 1000;
+/** A round blocks the next until its draw is over, or at most this long after its start. */
+export const ROUND_BLOCK_MS = 3 * 60 * 1000;
+function blocking(round: Round, now: number, settledId?: string) {
+  return round.id !== settledId && now < round.startAt + ROUND_BLOCK_MS;
+}
 /** Bierrad reviews take longer than coffee: fetching beer takes a while. */
 const DEFAULT_BEER_REVIEW_SETTINGS: ReviewSettings = {
   enabled: true,
@@ -410,7 +415,7 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
               startAt: new Date(round.startAt).toISOString(),
               spectatorCapability: round.spectatorCapability,
               // A settled round stays visible (its result) but no longer blocks.
-              active: round.id !== settledId,
+              active: blocking(round, now, settledId),
               ...(round.reviews ? { reviews: true } : {}),
               ...(round.title ? { title: round.title } : {}),
             },
@@ -761,11 +766,11 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
     const settings = this.reviewSettings(binding);
     // Reviews need the fixed channel page to log in on.
     const reviewed = settings.enabled && !!binding.requestCapability;
-    // A round blocks the next until its draw is over (or it can no longer be watched).
+    // A round blocks the next until its draw is over; its result stays watchable.
     if (
       binding.round &&
       now < binding.round.endsAt &&
-      binding.round.id !== settled
+      blocking(binding.round, now, settled)
     )
       throw new RequestError(409, "round_active");
     if (now - binding.window >= DAY_MS) {

@@ -5,7 +5,10 @@ import {
   COUNTDOWN_LEAD_MS,
   countdownDigit,
   countLabel,
+  drawEnd,
   joinNames,
+  RESULT_AFTER_MS,
+  resultShownAt,
   spectatorPresentation,
   timeLeftLabel,
   wheelColumns,
@@ -26,6 +29,7 @@ import {
 } from "../domain/spin";
 import { addParticipant } from "../utils/participants";
 import type { Participant } from "../domain/models";
+import type { ScheduledDraw } from "../../shared/protocol";
 
 const now = Date.parse("2026-10-02T13:45:00Z");
 const people = ["Robin", "Tim", "Sam", "Noor", "Eva"].reduce(
@@ -215,4 +219,30 @@ test("pointer ticks once per rim peg, in either direction and across the 180° w
   assert.equal(unwrapRotation(170, -170), 190);
   assert.equal(unwrapRotation(720 + 179, -179), 720 + 181);
   assert.equal(unwrapRotation(10, 5), 5);
+});
+
+test("a channel page shows the result a minute after the finale", () => {
+  const last = Math.max(end(0), end(1));
+  assert.equal(resultShownAt(ready, undefined), undefined);
+  assert.equal(resultShownAt(drawn, undefined), undefined);
+  const halfway = advanceDraw(drawn, "d", Math.min(end(0), end(1)));
+  assert.equal(halfway.state, "spinning");
+  assert.equal(resultShownAt(halfway, undefined), undefined);
+  const finished = advanceDraw(drawn, "d", last);
+  assert.equal(finished.state, "finished");
+  assert.equal(drawEnd(finished), last);
+  assert.equal(resultShownAt(finished, undefined), last + RESULT_AFTER_MS);
+});
+
+test("a skipped round shows its result at once, an empty pending one does not", () => {
+  const plan = { startAt: new Date(now).toISOString() };
+  const empty = createSession("e");
+  assert.equal(
+    resultShownAt(empty, { ...plan, status: "skipped" } as ScheduledDraw),
+    -Infinity,
+  );
+  assert.equal(
+    resultShownAt(empty, { ...plan, status: "pending" } as ScheduledDraw),
+    undefined,
+  );
 });

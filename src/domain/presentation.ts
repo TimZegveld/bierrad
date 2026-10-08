@@ -45,6 +45,32 @@ export function spectatorPresentation(
   }
   return { phase: "waiting", skipped };
 }
+/** A channel page keeps the finale on the wheels this long; ballots open about then. */
+export const RESULT_AFTER_MS = 60000;
+/** Server time at which the last wheel of a draw stops. */
+export function drawEnd(session: BeerWheelSession): number | undefined {
+  const draw = session.activeDraw;
+  if (!draw) return;
+  return (
+    Date.parse(draw.startAt) +
+    Math.max(...draw.spins.map((spin) => spin.durationMs))
+  );
+}
+/**
+ * When a round's channel page swaps the wheels for its result: a minute after
+ * the finale, or at once when a planned draw was skipped. Undefined while the
+ * round is still on (not drawn, or still spinning).
+ */
+export function resultShownAt(
+  session: BeerWheelSession,
+  scheduled: ScheduledDraw | undefined,
+): number | undefined {
+  if (session.state === "finished") {
+    const end = drawEnd(session);
+    return end === undefined ? undefined : end + RESULT_AFTER_MS;
+  }
+  if (!session.activeDraw && scheduled?.status === "skipped") return -Infinity;
+}
 /** 3, 2, 1, then 0 for "go"; undefined while the countdown is still announcing. */
 export function countdownDigit(remainingMs: number): number | undefined {
   if (remainingMs <= 0) return 0;

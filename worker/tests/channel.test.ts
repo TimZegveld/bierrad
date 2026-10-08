@@ -373,6 +373,7 @@ test(
       stored() { if (!this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name = 'binding'").toArray().length) return null; return this.ctx.storage.sql.exec('SELECT value FROM binding WHERE singleton = 1').toArray()[0]?.value ?? null; }
       pointed() { return this.ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name = 'pointer'").toArray().length > 0; }
       async finishRound() { const b = JSON.parse(this.stored()); b.round.endsAt = Date.now() - 1; this.ctx.storage.sql.exec('UPDATE binding SET value = ? WHERE singleton = 1', JSON.stringify(b)); return this.alarm(); }
+      staleRound() { const b = JSON.parse(this.stored()); b.round.startAt = Date.now() - 3 * 60 * 1000 - 1; this.ctx.storage.sql.exec('UPDATE binding SET value = ? WHERE singleton = 1', JSON.stringify(b)); }
     }`,
             compatibilityDate: "2026-09-25",
             compatibilityFlags: ["nodejs_compat"],
@@ -532,6 +533,7 @@ test(
       const channel = namespace.get(namespace.idFromName(admin.split(".")[0])) as unknown as {
         stored(): Promise<string | null>;
         finishRound(): Promise<void>;
+        staleRound(): Promise<void>;
       };
       const stored = (await channel.stored())!;
       // The admin secret and the binder are never stored. The request link is
@@ -674,6 +676,12 @@ test(
       // The new round replaced the old raw spectator link; after its window the next one is wiped too.
       assert.ok(!(await channel.stored())!.includes(viewer));
       assert.equal(((await status(requester)) as { status: { round?: { active: boolean } } }).status.round?.active, true);
+      // Its result stays watchable for half an hour after the start.
+      const watched = JSON.parse((await channel.stored())!).round;
+      assert.equal(watched.endsAt - watched.startAt, 30 * 60 * 1000);
+      // A round that never settles stops blocking three minutes after its start, yet stays shown.
+      await channel.staleRound();
+      assert.equal(((await status(requester)) as { status: { round?: { active: boolean } } }).status.round?.active, false);
       await channel.finishRound();
       assert.ok(!(await channel.stored())!.includes('"round"'));
       assert.equal(((await status(requester)) as { status: { round?: object } }).status.round, undefined);

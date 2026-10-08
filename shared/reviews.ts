@@ -44,6 +44,15 @@ export interface ReviewProgress {
   voted: number;
   eligible: number;
 }
+/**
+ * A closed round's stars for one winner, as its result page shows them: the
+ * same anonymous average and count as the call. Never the texts.
+ */
+export interface ReviewOutcome {
+  name: string;
+  average: number;
+  count: number;
+}
 /** One person's ballot: only the winners they may review, never themselves. */
 export interface ReviewBallot {
   drawId: string;

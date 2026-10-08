@@ -499,7 +499,7 @@ export function ChannelWheelPage({
           controller={live}
           badge={channelTitle(variant, status.channelName, word)}
           roundName={roundCopy(variant, word).round}
-          today={today(startAt)}
+          today={variant === "beer" && today(startAt)}
           when={startLabel(startAt)}
           replayOpen={replayOf === spectator}
           onReplay={(open) => setReplayOf(open ? spectator : undefined)}
@@ -647,7 +647,7 @@ export function ChannelViewPage({
           controller={live}
           badge={channelTitle(shown, channelName, word)}
           roundName={roundCopy(shown, word).round}
-          today={today(startAt)}
+          today={shown === "beer" && today(startAt)}
           when={startLabel(startAt)}
           replayOpen={replayOf === round.spectatorCapability}
           onReplay={(open) =>

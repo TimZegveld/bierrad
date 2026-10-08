@@ -10,7 +10,12 @@ import {
   advanceDraw,
 } from "../src/domain/drawEngine";
 import { getCapabilities } from "../src/domain/capabilities";
-import { reviewDeadline, reviewProgress, type RoundReview } from "./reviews";
+import {
+  reviewDeadline,
+  reviewOutcomes,
+  reviewProgress,
+  type RoundReview,
+} from "./reviews";
 import { validateParticipants } from "../src/utils/participants";
 import type { BeerWheelSession, ClientRole } from "../src/domain/models";
 import type { ScheduledDraw, PublicBeerWheelSession } from "../shared/protocol";
@@ -121,6 +126,7 @@ export function publicSession(record: StoredSession): PublicBeerWheelSession {
         }
       : {}),
     ...(reviewProgress(record) ? { review: reviewProgress(record) } : {}),
+    ...(reviewOutcomes(record) ? { reviewOutcomes: reviewOutcomes(record) } : {}),
     expiresAt: new Date(record.expiresAt).toISOString(),
     revision: record.revision,
   };

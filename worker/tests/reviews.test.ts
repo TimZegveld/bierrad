@@ -131,6 +131,23 @@ test("one strict ballot per person; the last vote closes, keeps no voter and era
   // Once posted (or uncertain, or given up) the texts are gone too.
   settleReviewJob(r.review!.job!, "posted");
   assert.deepEqual(r.review!.job!.results, []);
+  assert.ok(!JSON.stringify(r).includes("snel"));
+  // The result page keeps only the stars, until the session ends.
+  const dto = publicSession(r);
+  assert.equal(dto.review, undefined);
+  assert.deepEqual(dto.reviewOutcomes, [{ name: winner.name, average: 4.5, count: 2 }]);
+  for (const secret of ["pseudo-", "U0000000", "mentionId", "snel"])
+    assert.ok(!JSON.stringify(dto).includes(secret), secret);
+});
+
+test("open or unvoted reviews show no outcome", () => {
+  const { r, voters, end } = drawnRound();
+  submitReview(r, alias(voters[0].slack), "d1", { scores: [3], texts: ["ok"] }, end);
+  // While voting runs, shared screens see counts only.
+  assert.equal(publicSession(r).reviewOutcomes, undefined);
+  const quiet = drawnRound(5);
+  closeReview(quiet.r, quiet.end + 5 * 60000);
+  assert.equal(publicSession(quiet.r).reviewOutcomes, undefined);
 });
 
 test("each winner's reviews are their own reply, posted in turn", () => {

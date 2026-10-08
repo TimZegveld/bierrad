@@ -48,10 +48,10 @@ test("a remounted ballot card shows the draft the page kept", () => {
   assert.match(html, /15 \/ /);
 });
 
-test("the channel page renders the ballot first in both layouts, never in local storage", () => {
+test("the channel page renders the ballot first in every layout, never in local storage", () => {
   const page = readFileSync("src/components/ChannelPages.tsx", "utf8");
-  // Same position in the round and the no-round layout, so it is not remounted.
-  assert.equal(page.match(/<ChannelTheme[^>]*>\s*\{ballotCard\}/g)?.length, 2);
+  // Same position in the round, result and no-round layout, so it is not remounted.
+  assert.equal(page.match(/<ChannelTheme[^>]*>\s*\{ballotCard\}/g)?.length, 3);
   for (const file of ["ChannelPages.tsx", "ReviewBallot.tsx"])
     assert.doesNotMatch(
       readFileSync(`src/components/${file}`, "utf8"),

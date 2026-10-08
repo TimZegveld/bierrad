@@ -41,6 +41,7 @@ import {
   type ReviewDraft,
 } from "./ReviewBallot";
 import { RoundExplainer } from "./RoundExplainer";
+import { RoundResult, useRoundOver } from "./RoundResult";
 import { configuredApiUrl } from "../sessions/liveNavigation";
 import { RemoteSessionController } from "../sessions/RemoteSessionController";
 import App from "../App";
@@ -59,9 +60,10 @@ const dayOf = new Intl.DateTimeFormat("nl-NL", {
 });
 const dayKey = (at: number) =>
   new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Amsterdam" }).format(at);
+const today = (at: number) => dayKey(at) === dayKey(Date.now());
 /** "om 15:45" today; a Bierrad round planned for another day names that day. */
 function startLabel(startAt: number) {
-  return dayKey(startAt) === dayKey(Date.now())
+  return today(startAt)
     ? `om ${clock.format(startAt)}`
     : `${dayOf.format(startAt)} om ${clock.format(startAt)}`;
 }
@@ -295,6 +297,9 @@ export function ChannelWheelPage({
   /** The ballot being filled in; the card itself remounts when the round ends. */
   const [draft, setDraft] = useState<ReviewDraft>();
   const live = useRoundController(api, status?.round?.spectatorCapability);
+  const over = useRoundOver(live, status?.round?.active ?? true);
+  /** The round whose draw is being replayed, if any. */
+  const [replayOf, setReplayOf] = useState<string>();
   const run = useCallback(
     async (command?: ChannelCommand) => {
       if (!api) return;
@@ -482,6 +487,34 @@ export function ChannelWheelPage({
       setNotice={setNotice}
     />
   );
+  // A minute after the finale the page shows who fetches, until the round
+  // can no longer be watched; the wheels stay one click away.
+  if (status.round && over && live) {
+    const spectator = status.round.spectatorCapability;
+    const startAt = Date.parse(status.round.startAt);
+    return (
+      <ChannelTheme variant={variant} word={word}>
+        {ballotCard}
+        <RoundResult
+          controller={live}
+          badge={channelTitle(variant, status.channelName, word)}
+          roundName={roundCopy(variant, word).round}
+          today={today(startAt)}
+          when={startLabel(startAt)}
+          replayOpen={replayOf === spectator}
+          onReplay={(open) => setReplayOf(open ? spectator : undefined)}
+        >
+          {memberBar}
+          <ReviewProgressNote controller={live} />
+          <p>{appCopy[app].again}</p>
+          {viewLink}
+          {notice && <p role="status">{notice}</p>}
+          {join}
+          {admin}
+        </RoundResult>
+      </ChannelTheme>
+    );
+  }
   // The fixed channel page: the latest round's live wheel, then the next request.
   if (status.round)
     return (
@@ -553,6 +586,8 @@ export function ChannelViewPage({
   const [word, setWord] = useState<string>();
   const [gone, setGone] = useState(false);
   const live = useRoundController(api, round?.spectatorCapability);
+  const over = useRoundOver(live, round?.active ?? true);
+  const [replayOf, setReplayOf] = useState<string>();
   useEffect(() => {
     if (!api) return;
     let active = true;
@@ -604,6 +639,27 @@ export function ChannelViewPage({
         </div>
       </ChannelTheme>
     );
+  if (round && over && live) {
+    const startAt = Date.parse(round.startAt);
+    return (
+      <ChannelTheme variant={shown} word={word}>
+        <RoundResult
+          controller={live}
+          badge={channelTitle(shown, channelName, word)}
+          roundName={roundCopy(shown, word).round}
+          today={today(startAt)}
+          when={startLabel(startAt)}
+          replayOpen={replayOf === round.spectatorCapability}
+          onReplay={(open) =>
+            setReplayOf(open ? round.spectatorCapability : undefined)
+          }
+        >
+          <ReviewProgressNote controller={live} />
+          <p>{appCopy[app].again}</p>
+        </RoundResult>
+      </ChannelTheme>
+    );
+  }
   if (round)
     return (
       <ChannelTheme variant={shown} word={word}>

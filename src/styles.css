@@ -1815,6 +1815,35 @@ footer b {
     animation: none;
   }
 }
+/* After the finale: who fetches, until the round can no longer be watched. */
+.round-result h1 {
+  font-family: Outfit, sans-serif;
+  font-size: clamp(28px, 5vw, 44px);
+  letter-spacing: -1px;
+  line-height: 1.15;
+}
+.round-result-winners {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 22px 16px;
+  border-radius: 18px;
+  background: var(--final-bg);
+  border: 1px solid var(--final-border);
+  animation: reveal 0.5s ease-out;
+}
+.round-result-winners .winner-names {
+  font-size: clamp(28px, 6vw, 44px);
+}
+.round-result-winners p {
+  margin: 0;
+}
+.round-result-winners .link-button {
+  margin-top: 8px;
+}
+
 /* Fixed channel page: a slim strip above the latest round's live wheel. */
 .channel-live {
   height: 100svh;

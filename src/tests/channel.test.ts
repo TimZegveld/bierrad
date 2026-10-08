@@ -11,29 +11,61 @@ const cap = `${"a".repeat(32)}.${"b".repeat(64)}`;
 const other = `${"c".repeat(32)}.${"d".repeat(64)}`;
 
 test("channel routes accept only exact fragments with hex or 5-word capabilities", () => {
-  assert.deepEqual(parseChannelRoute("#/koffie-koppelen"), { page: "bind" });
+  assert.deepEqual(parseChannelRoute("#/koffie-koppelen"), { app: "coffee", page: "bind" });
   assert.deepEqual(parseChannelRoute("#/koffie-koppelen/not_in_channel"), {
+    app: "coffee",
     page: "bind",
     failure: "not_in_channel",
   });
   assert.deepEqual(parseChannelRoute(`#/koffie/${cap}`), {
+    app: "coffee",
     page: "wheel",
     capability: cap,
   });
   // The word link only watches.
   assert.deepEqual(parseChannelRoute("#/koffie/aap-beer-dak-fiets-hoed"), {
+    app: "coffee",
     page: "view",
     capability: "aap-beer-dak-fiets-hoed",
   });
   assert.deepEqual(parseChannelRoute(`#/koffie-beheer/${cap}/${other}`), {
+    app: "coffee",
     page: "wheel",
     capability: cap,
     requestCapability: other,
   });
   // A failed personal login lands without any link.
   assert.deepEqual(parseChannelRoute("#/koffie-login/forbidden"), {
+    app: "coffee",
     page: "memberFailure",
     failure: "forbidden",
+  });
+  // The Bierrad's channel pages have their own routes and app.
+  assert.deepEqual(parseChannelRoute("#/bier-koppelen/busy"), {
+    app: "beer",
+    page: "bind",
+    failure: "busy",
+  });
+  assert.deepEqual(parseChannelRoute(`#/bier/${cap}`), {
+    app: "beer",
+    page: "wheel",
+    capability: cap,
+  });
+  assert.deepEqual(parseChannelRoute("#/bier/aap-beer-dak-fiets-hoed"), {
+    app: "beer",
+    page: "view",
+    capability: "aap-beer-dak-fiets-hoed",
+  });
+  assert.deepEqual(parseChannelRoute(`#/bier-beheer/${cap}/${other}`), {
+    app: "beer",
+    page: "wheel",
+    capability: cap,
+    requestCapability: other,
+  });
+  assert.deepEqual(parseChannelRoute("#/bier-login/expired"), {
+    app: "beer",
+    page: "memberFailure",
+    failure: "expired",
   });
   for (const hash of [
     "#/koffie-login",
@@ -47,6 +79,11 @@ test("channel routes accept only exact fragments with hex or 5-word capabilities
     "#/koffie-beheer/aap-beer-dak-fiets-hoed",
     `#/koffie-beheer/${cap}`,
     "#/coffee",
+    "#/bier",
+    "#/bierrad",
+    `#/bierkoppelen`,
+    `#/bier-beheer/${cap}`,
+    `#/beer/${cap}`,
   ])
     assert.equal(parseChannelRoute(hash), null, hash);
 });

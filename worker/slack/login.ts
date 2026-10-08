@@ -1,4 +1,4 @@
-import type { WheelVariant } from "../../shared/variant";
+import type { ChannelApp } from "../../shared/channel";
 import { equalHash, randomHex } from "../auth";
 import { object, SlackApiClient, SlackError, type SlackObject } from "./api";
 import { loginConfigured, type SlackSecrets } from "./access";
@@ -16,8 +16,9 @@ export class LoginError extends Error {
   }
 }
 interface Pending {
-  variant: WheelVariant;
-  /** Set when the login binds a Koffierad to this channel. */
+  /** The app whose login this is, and whose channel binding it concerns. */
+  variant: ChannelApp;
+  /** Set when the login binds this channel. */
   channelId?: string;
   /** Set when the login gives a personal link for this channel's object. */
   memberLocator?: string;
@@ -39,24 +40,20 @@ export function parseLoginCookie(
   // Duplicates are ambiguous; fail closed.
   if (values.length !== 1) return;
   const match =
-    /^(channel-[CG][A-Z0-9]{8,20}|member-[a-f0-9]{32})\.([a-f0-9]{64})\.([a-f0-9]{64})\.(\d{13})$/.exec(
+    /^((?:beer-)?)(?:channel-([CG][A-Z0-9]{8,20})|member-([a-f0-9]{32}))\.([a-f0-9]{64})\.([a-f0-9]{64})\.(\d{13})$/.exec(
       values[0].slice(LOGIN_COOKIE.length + 1),
     );
-  if (!match || Number(match[4]) <= now) return;
-  const channel = match[1].startsWith("channel-")
-    ? match[1].slice(8)
-    : undefined;
-  const member = match[1].startsWith("member-")
-    ? match[1].slice(7)
-    : undefined;
+  if (!match || Number(match[6]) <= now) return;
+  const channel = match[2],
+    member = match[3];
   return {
-    // Channel bindings and personal links are Koffierad features: the coffee app.
-    variant: "coffee",
+    // Koffierad purposes are unprefixed; the Bierrad app's carry `beer-`.
+    variant: match[1] ? "beer" : "coffee",
     ...(channel ? { channelId: channel } : {}),
     ...(member ? { memberLocator: member } : {}),
-    state: match[2],
-    nonce: match[3],
-    expiresAt: Number(match[4]),
+    state: match[4],
+    nonce: match[5],
+    expiresAt: Number(match[6]),
   };
 }
 export function loginCookie(value: string, maxAge: number): string {
@@ -78,21 +75,20 @@ async function workspace(
 /** No Slack call here: anyone can open this route, so it must not spend bot quota. */
 export function beginLogin(
   env: SlackSecrets,
-  variant: WheelVariant,
+  variant: ChannelApp,
   redirectUri: string,
   now = Date.now(),
   channelId?: string,
   memberLocator?: string,
 ): { location: string; cookie: string } {
   if (!loginConfigured(env)) throw new LoginError("unavailable");
-  if (
-    channelId !== undefined &&
-    (variant !== "coffee" || !/^[CG][A-Z0-9]{8,20}$/.test(channelId))
-  )
+  if (variant !== "coffee" && variant !== "beer")
+    throw new LoginError("expired");
+  if (channelId !== undefined && !/^[CG][A-Z0-9]{8,20}$/.test(channelId))
     throw new LoginError("expired");
   if (
     memberLocator !== undefined &&
-    (variant !== "coffee" || channelId || !/^[a-f0-9]{32}$/.test(memberLocator))
+    (channelId || !/^[a-f0-9]{32}$/.test(memberLocator))
   )
     throw new LoginError("expired");
   // Every login binds a channel or gives a personal link; none starts a session.
@@ -112,7 +108,8 @@ export function beginLogin(
   return {
     location: location.href,
     cookie: loginCookie(
-      `${channelId ? `channel-${channelId}` : `member-${memberLocator}`}.${state}.${nonce}.${now + LOGIN_TTL_MS}`,
+      `${variant === "beer" ? "beer-" : ""}${channelId ? `channel-${channelId}` : `member-${memberLocator}`}.${state}.${nonce}.${now + LOGIN_TTL_MS}`,
+
       LOGIN_TTL_MS / 1000,
     ),
   };

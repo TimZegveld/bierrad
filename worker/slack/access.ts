@@ -9,8 +9,10 @@ export interface SlackSecrets {
   SLACK_BOT_TOKEN?: string;
   SLACK_CLIENT_ID?: string;
   SLACK_CLIENT_SECRET?: string;
+  /** Verifies `/bierrad` slash commands; only the Bierrad app receives them. */
+  SLACK_SIGNING_SECRET?: string;
 }
-/** Marks rounds started by a channel-bound Koffierad (bound after Sign in with Slack). */
+/** Marks rounds started by a channel-bound wheel (bound after Sign in with Slack). */
 export const CHANNEL_GRANT = "slack-channel";
 export function loginConfigured(env: SlackSecrets): boolean {
   return (

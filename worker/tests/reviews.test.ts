@@ -268,7 +268,14 @@ test("a personal login is bound to its channel object in the login cookie", () =
   assert.equal(pending.memberLocator, locator);
   assert.equal(pending.variant, "coffee");
   assert.equal(pending.channelId, undefined);
-  assert.throws(() => beginLogin(env, "beer", "https://x/cb", now, undefined, locator));
+  // The Bierrad app's personal logins carry their own prefix.
+  const beer = parseLoginCookie(
+    beginLogin(env, "beer", "https://x/cb", now, undefined, locator).cookie.split(";")[0],
+    now,
+  )!;
+  assert.equal(beer.variant, "beer");
+  assert.equal(beer.memberLocator, locator);
+  assert.throws(() => beginLogin(env, "water" as "beer", "https://x/cb", now, undefined, locator));
   assert.throws(() => beginLogin(env, "coffee", "https://x/cb", now, undefined, "XYZ"));
   assert.equal(parseLoginCookie(`${LOGIN_COOKIE}=member-${"g".repeat(32)}.${"a".repeat(64)}.${"b".repeat(64)}.${now + 1000}`, now), undefined);
 });

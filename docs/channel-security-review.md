@@ -100,3 +100,14 @@ Reviewed against all SECURITY.md sections for the owner's requested `:name-koek:
 - Reviews resolve the winner to the signed-up participant, never a sponsor, preventing self-review and duplicate votes. Nominations gain no vote. Cookie channel rounds still have exactly one winner. No new endpoint, scope, secret, dependency, storage class or migration. Rounds that were live during the switch drop their old separate entries on the next refresh.
 
 Coverage: `worker/tests/cookie.test.ts` tests multiple reactors/emojis, emoji-only reactors, weights from unique/ambiguous/missing/case-insensitive/full-name matches, shrinking on removal, stable IDs, removal of legacy entries, malformed/incomplete/oversized lists, bot exclusions, variant isolation, private DTOs, both ticket outcomes of the frozen credit and review rights. `src/tests/weights.test.ts` covers slice geometry, landings inside weighted slices, weight validation, proportional odds and frozen weights on replay. `worker/tests/channel.test.ts` exercises a weighted slice through the real Worker/SQLite final check, winner thread post and settled call. Actual workspace acceptance remains a separate check after the compatible Worker is deployed.
+
+## Bierrad channel rounds (`/bierrad`) — 2026-10-07
+
+Requested by the owner; reviewed against every SECURITY.md section, which now has the section "Bierrad channel rounds".
+
+- **Separation:** the Bierrad binding is its own Durable Object (`bierrad-channel:` prefix), stores its app and uses only the Bierrad app's `SLACK_*` credentials; Koffierad bindings keep their names and behaviour. Each slash endpoint verifies only its own signing secret and accepts only its own commands (tested: the coffee secret on `/slack/bier-commands` gives 401, `/bierrad` on `/slack/commands` gives 400, Koffierad commands on the Bierrad endpoint are invalid). A personal login is accepted only by a binding of the same app; login cookies carry the app.
+- **Input:** day, time and number are parsed strictly and validated twice (slash parser and channel object), in Europe/Amsterdam; passed, non-existent and far starts are refused. The own text is bounded, cleaned and rendered as literal rich text with only emoji and bold, never as mrkdwn; tests cover `<!channel>`, `<!here>`, `<@U…>`, URLs and bidi and control characters. It never reaches a browser DTO.
+- **Exposure:** the call, reminder and settled call add no new audience: all links were already posted in the channel. The reminder keeps those links in the temporary session only until it settles; it is claimed before I/O and posted at most once (twice after a definite rejection).
+- **Load:** reactions are read every 15, 5 or 1 minutes depending on how far away the start is, so a round planned days ahead does not poll every minute.
+- **Not verified against a real Slack workspace** at the time of writing; the Miniflare tests use a fake Slack API with synthetic IDs.
+

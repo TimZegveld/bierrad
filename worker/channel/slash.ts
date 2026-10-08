@@ -1,20 +1,29 @@
 import {
+  channelApps,
   channelCopy,
-  channelVariants,
+  type ChannelApp,
   type ChannelVariant,
 } from "../../shared/channel";
 import { roundTitle, themes } from "../../shared/variant";
 import { equalHash, hashSecret } from "../auth";
+import { MAX_INTRO_LENGTH, parseBeerText } from "./beer";
 /**
- * `/koffierad`, `/waterrad` and `/koekrad` slash commands. All belong to the
- * Koffierad app: Slack signs every request with its signing secret, the only
- * authorization.
+ * Slash commands. `/koffierad`, `/waterrad` and `/koekrad` belong to the
+ * Koffierad app, `/bierrad` to the Bierrad app. Each app has its own endpoint
+ * and signing secret, the only authorization, and accepts only its own commands.
  * https://docs.slack.dev/authentication/verifying-requests-from-slack/
  */
-function commandVariant(command: string | undefined): ChannelVariant | undefined {
-  return channelVariants.find((v) => channelCopy[v].command === command);
+function commandVariant(
+  command: string | undefined,
+  app: ChannelApp,
+): ChannelVariant | undefined {
+  return channelApps[app].variants.find(
+    (v) => channelCopy[v].command === command,
+  );
 }
 const MAX_BODY_BYTES = 8192;
+/** Koffierad commands take a number and one word; `/bierrad` also its own text. */
+const MAX_TEXT: Record<ChannelApp, number> = { coffee: 32, beer: 2000 };
 const MAX_SKEW_S = 300;
 
 export class SlashError extends Error {}
@@ -94,6 +103,8 @@ export type SlashRequest =
   | { kind: "help"; variant: ChannelVariant }
   | { kind: "invalid" }
   | { kind: "wrongChannel"; variant: ChannelVariant }
+  /** `/bierrad` at a time that has passed, too far ahead, or with too much text. */
+  | { kind: "refused"; variant: ChannelVariant; reason: "past" | "far" | "intro" }
   | {
       kind: "round";
       variant: ChannelVariant;
@@ -104,6 +115,12 @@ export type SlashRequest =
       channelName?: string;
       /** `/koekrad <titel>` only, validated by `roundTitle`; only shown. */
       title?: string;
+      /** `/bierrad` only: the chosen start; other rounds start after minutes. */
+      startAt?: number;
+      /** `/bierrad` only, when the command names a number of winners. */
+      winners?: number;
+      /** `/bierrad` only: own text above the call, cleaned by `cleanIntro`; only shown. */
+      intro?: string;
     };
 /** Slack channel names: lowercase letters, digits, `-`, `_` and `.`, at most 80. */
 export function validChannelName(name: string | undefined): string | undefined {
@@ -114,21 +131,26 @@ export function validChannelName(name: string | undefined): string | undefined {
     ? name
     : undefined;
 }
-export function parseSlashCommand(body: string): SlashRequest {
+export function parseSlashCommand(
+  body: string,
+  app: ChannelApp = "coffee",
+  now = Date.now(),
+): SlashRequest {
   const params = new URLSearchParams(body);
   const one = (key: string) =>
     params.getAll(key).length === 1 ? params.get(key)! : undefined;
   const userId = one("user_id");
   const channelId = one("channel_id");
-  const text = (one("text") ?? "").trim();
-  const variant = commandVariant(one("command"));
+  const raw = one("text") ?? "";
+  const text = raw.trim();
+  const variant = commandVariant(one("command"), app);
   if (
     !variant ||
     !userId ||
     !/^[UW][A-Z0-9]{8,20}$/.test(userId) ||
     !channelId ||
     channelId.length > 32 ||
-    text.length > 32
+    raw.length > MAX_TEXT[app]
   )
     return { kind: "invalid" };
   if (!/^[CG][A-Z0-9]{8,20}$/.test(channelId))
@@ -142,6 +164,19 @@ export function parseSlashCommand(body: string): SlashRequest {
     userId,
     ...(channelName ? { channelName } : {}),
   } as const;
+  if (variant === "beer") {
+    const beer = parseBeerText(raw, now);
+    if (!beer.ok)
+      return beer.reason === "help"
+        ? { kind: "help", variant }
+        : { kind: "refused", variant, reason: beer.reason };
+    return {
+      ...round,
+      startAt: beer.startAt,
+      ...(beer.winners !== undefined ? { winners: beer.winners } : {}),
+      ...(beer.intro ? { intro: beer.intro } : {}),
+    };
+  }
   if (!text) return round;
   // Minutes come last; only the Koekrad takes one word before them.
   const match = /(?:^|\s+)(\d{1,2})\s*(m|min|minuut|minuten)?$/i.exec(text);
@@ -168,7 +203,10 @@ export function ephemeral(text: string): Response {
 }
 export function slashHelp(variant: ChannelVariant): string {
   const { command, round } = channelCopy[variant];
+  if (variant === "beer")
+    return `${themes.beer.icon} Gebruik \`${command}\` voor een ${round} vandaag om 15.45, of bijvoorbeeld \`${command} 16.00\`, \`${command} vrijdag 15.45 3\` (drie halers) of \`${command} 10-10 16.30\`. Wat erachter komt, staat als eigen tekst boven de oproep: emoji en *vet* mogen, tot ${MAX_INTRO_LENGTH} tekens.`;
   return variant === "cookie"
+
     ? `${themes[variant].icon} Gebruik \`${command}\` om een ${round} te starten met de standaardwachttijd van dit kanaal, of bijvoorbeeld \`${command} taart 10\` voor een taartronde na 1 tot 30 minuten. De titel is één woord van 2 tot 20 letters.`
     : `${themes[variant].icon} Gebruik \`${command}\` om een ${round} te starten met de standaardwachttijd van dit kanaal, of \`${command} 10\` om het rad na 1 tot 30 minuten te laten draaien.`;
 }

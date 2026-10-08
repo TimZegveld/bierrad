@@ -57,6 +57,8 @@ npm run demo
 
 Eén commando, zonder Slack-app of secrets: bouwt de Worker, draait hem in Miniflare met een nep-Slack ervoor (poort 8787) en start Vite (poort 5173). Open `http://127.0.0.1:8787/__demo/`. Daar staat een nep-Slack-kanaal met een koffieoproep van zes verzonnen collega's. Klik op **Open de ronde**, log in via de nep-inlogpagina als een van de zes, zie het rad 10 seconden aftellen en draaien, en stem daarna. Knoppen op de demopagina slaan de wachtminuut voor het stemmen over, laten de anderen stemmen of starten een nieuwe ronde. De reviews verschijnen in de nep-thread. Alles staat in het geheugen; herstarten wist alles. De tijdhooks (`DemoSession`, `DemoChannel`) worden uitsluitend aan de in-memory demobundle toegevoegd en zitten niet in productie. Stop eerst een lopende `dev:worker` of `dev`, want de demo gebruikt dezelfde poorten.
 
+`npm run demo:bier` doet hetzelfde voor het Bierrad: de bot plaatst een `/bierrad` over een kwartier met een eigen tekst, je klikt op **radje**, logt in, en bij het aftellen verschijnt de herinnering met **Inloggen** en **alleen meekijken** in de thread. Daarna draait het rad met twee halers.
+
 ## Validatie
 
 ```sh
@@ -128,7 +130,8 @@ Een hostcapability bestaat uit een willekeurige 128-bit locator plus een onafhan
 | `GET /api/socket` upgrade | Geldige host of kijker | Snapshotupdates; alleen pingberichten toegestaan |
 | `GET /api/channel` | Geldige beheer- of aanvraaglink van een kanaal-Koffierad | Status, standaardwachttijd en lopende ronde |
 | `POST /api/channel` | Idem; beheer alleen met beheerlink | `setDefaultMinutes`, `setReviews`, `rotateRequestLink`, `unbind`; met een persoonlijke link `review` en `logout`. Rondes starten alleen met `/koffierad`, `/waterrad` of `/koekrad`. |
-| `POST /slack/commands` | Uitsluitend met geldige Slack-handtekening | `/koffierad [minuten]`, `/waterrad [minuten]` of `/koekrad [titel] [minuten]` start een koffie-, water- of koekronde in het gekoppelde kanaal |
+| `POST /slack/commands` | Uitsluitend met geldige handtekening van de Koffierad-app | `/koffierad [minuten]`, `/waterrad [minuten]` of `/koekrad [titel] [minuten]` start een koffie-, water- of koekronde in het gekoppelde kanaal |
+| `POST /slack/bier-commands` | Uitsluitend met geldige handtekening van de Bierrad-app | `/bierrad [dag] [tijd] [aantal] [tekst]` plant een bierronde in het gekoppelde kanaal |
 
 HTTP gebruikt `Authorization: Bearer <capability>`. Browsers bieden bij WebSocket-upgrade `bierrad, auth.<capability>` als subprotocol aan; de server selecteert alleen `bierrad`. Geen capabilities in backend-URLs of querystrings. Commando's: `setParticipants` (namen, server maakt IDs), `setWinnerCount`, `setScheduledDraw` (ISO-tijd of null om te annuleren, optioneel met `spectatorCapability` om de kijklink vooraf in de Slack-thread te laten plaatsen), `startDraw`, `reset`, `endSession`. De client kan nooit officiële winnaars/instructies aanleveren. Backendrechten zijn bepalend; frontendcapabilities zijn alleen UX.
 
@@ -172,7 +175,13 @@ Een live-host kan onder **Automatisch starten** een datum en tijd kiezen, standa
 
 ## Slack
 
-Slack-deelname loopt uitsluitend via een aan een kanaal gekoppeld rad (zie hieronder). **Start met Slack** (een vrijdagbericht van een collega koppelen) is op 2026-10-07 verwijderd, met de bijbehorende deelnamelinks (`#/meedoen/…`) en kijklink-herinnering. Oude links naar `#/slack` en `#/meedoen/…` openen het lokale Bierrad; sessies die zo gestart zijn houden geen Slack-toegang meer.
+Slack-deelname loopt uitsluitend via een aan een kanaal gekoppeld rad: het Bierrad met `/bierrad` (hieronder) en het [Koffierad](#live-koffierad-per-slack-kanaal). **Start met Slack** (een vrijdagbericht van een collega koppelen) is op 2026-10-07 verwijderd, met de bijbehorende deelnamelinks (`#/meedoen/…`). Oude links naar `#/slack` en `#/meedoen/…` openen het lokale Bierrad; sessies die zo gestart zijn houden geen Slack-toegang meer.
+
+### Bierrad per Slack-kanaal: `/bierrad`
+
+Koppel het Bierrad aan een kanaal via `#/bier-koppelen` (met de eigen Bierrad-app). Daarna typt iedereen in dat kanaal `/bierrad`: de bot plaatst de vaste oproep (":beers: :spin-the-wheel: Het bierronde radje …") met een 🍻 eronder, en het rad draait vandaag om **15:45** met **twee** halers. Kies zelf met bijvoorbeeld `/bierrad 15.44`, `/bierrad morgen`, `/bierrad vrijdag 16.00 3` of `/bierrad 10-10 16.30`; een tijd die al geweest is, wordt geweigerd. Alles na dag, tijd en aantal is je eigen tekst boven de oproep (emoji en `*vet*` mogen; mentions en links blijven gewone tekst).
+
+"radje" in de oproep opent het vaste rad van het kanaal (`#/bier/…`), waar je **inlogt met Slack** of **alleen meekijkt**. Twee minuten voor de start zet de bot beide links nog eens in de thread. Na de trekking staan de halers met @vermelding in de thread en in de bijgewerkte oproep; deelnemers geven ze daarna anoniem 1–5 sterren (standaard 30 minuten). Op de beheerpagina stel je het standaard aantal halers en de reviews in. Zie [Bierrad instellen](docs/slack-setup.md#bierrad-app-bierrad-in-een-kanaal).
 
 [Appmanifest en veilige instelling](docs/slack-setup.md) · [Security review](docs/slack-security-review.md)
 

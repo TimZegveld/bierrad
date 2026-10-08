@@ -1655,6 +1655,11 @@ footer b {
 .round-explainer li:nth-child(3) { animation-delay: 0.16s; }
 .round-explainer li:nth-child(4) { animation-delay: 0.24s; }
 .round-explainer li:nth-child(5) { animation-delay: 0.32s; }
+.round-explainer li:nth-child(6) { animation-delay: 0.4s; }
+/* Six steps: three by two, or two by three on a phone. */
+.round-explainer.six-steps ol {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+}
 .round-explainer h3 {
   display: flex;
   align-items: center;

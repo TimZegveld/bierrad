@@ -1,11 +1,11 @@
-import { startsWithSlack, type WheelVariant } from "../../shared/variant";
+import type { WheelVariant } from "../../shared/variant";
 import { equalHash, randomHex } from "../auth";
 import { object, SlackApiClient, SlackError, type SlackObject } from "./api";
 import { loginConfigured, type SlackSecrets } from "./access";
 /**
  * Sign in with Slack (OpenID Connect, authorization code flow).
- * Only decides whether a full workspace member may start a Slack session;
- * no Slack identity, token or profile is stored afterwards.
+ * Only decides whether a full workspace member may bind a channel or get a
+ * personal channel link; no Slack identity, token or profile is stored.
  */
 export const LOGIN_COOKIE = "__Host-bierrad-slack-login";
 export const LOGIN_TTL_MS = 10 * 60 * 1000;
@@ -17,12 +17,10 @@ export class LoginError extends Error {
 }
 interface Pending {
   variant: WheelVariant;
-  /** Set when the login binds a Koffierad to this channel instead of starting a session. */
+  /** Set when the login binds a Koffierad to this channel. */
   channelId?: string;
   /** Set when the login gives a personal link for this channel's object. */
   memberLocator?: string;
-  /** Set when the login gives a personal link for this live session's object. */
-  joinLocator?: string;
   state: string;
   nonce: string;
   expiresAt: number;
@@ -41,7 +39,7 @@ export function parseLoginCookie(
   // Duplicates are ambiguous; fail closed.
   if (values.length !== 1) return;
   const match =
-    /^([a-z]+|channel-[CG][A-Z0-9]{8,20}|member-[a-f0-9]{32}|join-beer-[a-f0-9]{32})\.([a-f0-9]{64})\.([a-f0-9]{64})\.(\d{13})$/.exec(
+    /^(channel-[CG][A-Z0-9]{8,20}|member-[a-f0-9]{32})\.([a-f0-9]{64})\.([a-f0-9]{64})\.(\d{13})$/.exec(
       values[0].slice(LOGIN_COOKIE.length + 1),
     );
   if (!match || Number(match[4]) <= now) return;
@@ -51,20 +49,9 @@ export function parseLoginCookie(
   const member = match[1].startsWith("member-")
     ? match[1].slice(7)
     : undefined;
-  const join = /^join-([a-z]+)-([a-f0-9]{32})$/.exec(match[1]);
-  // Channel bindings and personal channel links use the coffee app; a plain
-  // or join login only ever starts or joins a Bierrad.
-  if (!channel && !member && !join && !startsWithSlack(match[1])) return;
-  if (join && !startsWithSlack(join[1])) return;
   return {
-    // Channel bindings and personal links are Koffierad features: the coffee
-    // app. A session's personal link uses that session's own app.
-    variant: join
-      ? (join[1] as WheelVariant)
-      : channel || member
-        ? "coffee"
-        : (match[1] as WheelVariant),
-    ...(join ? { joinLocator: join[2] } : {}),
+    // Channel bindings and personal links are Koffierad features: the coffee app.
+    variant: "coffee",
     ...(channel ? { channelId: channel } : {}),
     ...(member ? { memberLocator: member } : {}),
     state: match[2],
@@ -96,7 +83,6 @@ export function beginLogin(
   now = Date.now(),
   channelId?: string,
   memberLocator?: string,
-  joinLocator?: string,
 ): { location: string; cookie: string } {
   if (!loginConfigured(env)) throw new LoginError("unavailable");
   if (
@@ -109,11 +95,8 @@ export function beginLogin(
     (variant !== "coffee" || channelId || !/^[a-f0-9]{32}$/.test(memberLocator))
   )
     throw new LoginError("expired");
-  if (
-    joinLocator !== undefined &&
-    (channelId || memberLocator || !/^[a-f0-9]{32}$/.test(joinLocator))
-  )
-    throw new LoginError("expired");
+  // Every login binds a channel or gives a personal link; none starts a session.
+  if (!channelId && !memberLocator) throw new LoginError("expired");
   const state = randomHex(),
     nonce = randomHex();
   const location = new URL("https://slack.com/openid/connect/authorize");
@@ -129,7 +112,7 @@ export function beginLogin(
   return {
     location: location.href,
     cookie: loginCookie(
-      `${channelId ? `channel-${channelId}` : memberLocator ? `member-${memberLocator}` : joinLocator ? `join-${variant}-${joinLocator}` : variant}.${state}.${nonce}.${now + LOGIN_TTL_MS}`,
+      `${channelId ? `channel-${channelId}` : `member-${memberLocator}`}.${state}.${nonce}.${now + LOGIN_TTL_MS}`,
       LOGIN_TTL_MS / 1000,
     ),
   };

@@ -283,51 +283,6 @@ test("extended session expiry avoids browser timer overflow and still expires of
   }
 });
 
-test("host shares its spectator link with a scheduled draw only on request", async () => {
-  const serverNow = Date.now(),
-    dto = fixture(serverNow),
-    socket = new FakeSocket();
-  const viewer = "a".repeat(32) + "." + "c".repeat(64);
-  const bodies: Record<string, unknown>[] = [];
-  const controller = new RemoteSessionController({
-    apiUrl: "https://example.invalid",
-    role: "host",
-    capability,
-    spectatorCapability: viewer,
-    fetch: (async (_url, options) => {
-      if (options?.body) bodies.push(JSON.parse(String(options.body)));
-      return Response.json({
-        type: "snapshot",
-        role: "host",
-        session: dto,
-        serverNow,
-      });
-    }) as typeof fetch,
-    socket: () => socket as unknown as WebSocket,
-  });
-  try {
-    await controller.initialize();
-    socket.deliver({ type: "snapshot", role: "host", session: dto, serverNow });
-    assert.equal(controller.canShareSpectatorLink, true);
-    const at = new Date(serverNow + 600000).toISOString();
-    await controller.setScheduledDraw(at);
-    await controller.setScheduledDraw(at, true);
-    await controller.setScheduledDraw(null, true);
-    assert.deepEqual(
-      bodies.map((b) => b.spectatorCapability),
-      [undefined, viewer, undefined],
-    );
-  } finally {
-    controller.dispose();
-  }
-  const bare = new RemoteSessionController({
-    apiUrl: "https://example.invalid",
-    role: "host",
-    capability,
-  });
-  assert.equal(bare.canShareSpectatorLink, false);
-  bare.dispose();
-});
 test("a new live session takes over the host's local roster once via host commands", async () => {
   const serverNow = Date.now(),
     socket = new FakeSocket();

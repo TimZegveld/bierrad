@@ -3,7 +3,6 @@ import {
   localHash,
   localVariant,
   retiredRoute,
-  startsWithSlack,
   themeFor,
   type WheelVariant,
 } from "../shared/variant";
@@ -23,8 +22,6 @@ import {
   parseLiveRoute,
 } from "./sessions/liveNavigation";
 import { parseChannelRoute } from "./sessions/ChannelClient";
-import { parseJoinRoute } from "./sessions/JoinClient";
-import { JoinFailurePage, SessionJoinPage } from "./components/SessionJoinPage";
 import { isChannelVariant } from "../shared/channel";
 import {
   ChannelBindPage,
@@ -47,13 +44,6 @@ export function SessionRoot() {
     setHash(retired);
   }, [retired]);
   if (retired) return null;
-  const join = parseJoinRoute(hash);
-  if (join)
-    return join.page === "failure" ? (
-      <JoinFailurePage key={hash} failure={join.failure} />
-    ) : (
-      <SessionJoinPage key={hash} capability={join.capability} />
-    );
   const channel = parseChannelRoute(hash);
   if (channel)
     return (
@@ -73,14 +63,7 @@ export function SessionRoot() {
         )}
       </VariantContext.Provider>
     );
-  const login = slackLoginRoute(hash);
-  return login ? (
-    <VariantContext.Provider value={login.variant}>
-      <SlackLogin key={hash} failure={login.failure} />
-    </VariantContext.Provider>
-  ) : (
-    <SessionPage key={hash} hash={hash} />
-  );
+  return <SessionPage key={hash} hash={hash} />;
 }
 function SessionPage({ hash }: { hash: string }) {
   const local = localVariant(hash);
@@ -231,15 +214,6 @@ function LiveBar({
           Start live {theme.name} ↗
         </button>
       )}
-      {!live && apiUrl && startsWithSlack(theme.variant) && (
-        <a
-          className="button-link"
-          href={slackLoginUrl(apiUrl, theme.variant)}
-          rel="noreferrer"
-        >
-          Start met Slack {theme.icon}
-        </a>
-      )}
       {!live && apiUrl && isChannelVariant(theme.variant) && (
         <a className="button-link" href="#/koffie-koppelen">
           Koppel aan een Slack-kanaal {theme.icon}
@@ -287,64 +261,6 @@ function LiveBar({
       )}
       {live && <a href={localHash(theme.variant)}>Eigen {theme.name}</a>}
       {notice && <p role="status">{notice}</p>}
-    </div>
-  );
-}
-
-type SlackFailure = "denied" | "forbidden" | "expired" | "unavailable" | "busy";
-const failures: Record<SlackFailure, string> = {
-  denied: "Inloggen bij Slack is geannuleerd.",
-  forbidden:
-    "Alleen volwaardige leden van de workspace kunnen een Slack-rad starten. Gasten en externe gebruikers kunnen wel meekijken.",
-  expired:
-    "Het inloggen duurde te lang of is in een ander tabblad gestart. Probeer opnieuw.",
-  unavailable: "Slack is nu niet bereikbaar of nog niet ingesteld.",
-  busy: "Even rustig aan. Probeer over een minuut opnieuw.",
-};
-/** `#/slack` with an optional failure; only the Bierrad starts with Slack. */
-function slackLoginRoute(
-  hash: string,
-): { variant: "beer"; failure?: SlackFailure } | undefined {
-  const match =
-    /^#\/slack(?:\/(denied|forbidden|expired|unavailable|busy))?$/.exec(hash);
-  if (!match) return;
-  return {
-    variant: "beer",
-    ...(match[1] ? { failure: match[1] as SlackFailure } : {}),
-  };
-}
-function slackLoginUrl(api: string, variant: WheelVariant): string {
-  return `${api}/auth/slack/${variant}`;
-}
-function SlackLogin({ failure }: { failure?: SlackFailure }) {
-  const theme = useTheme();
-  useEffect(() => {
-    document.documentElement.dataset.variant = theme.variant;
-    document.title = theme.name;
-  }, [theme.variant, theme.name]);
-  const api = configuredApiUrl();
-  return (
-    <div className="unavailable">
-      <h1>
-        {theme.icon} {theme.badge}.
-      </h1>
-      <p>
-        Log in met Slack om een tijdelijk live {theme.name} te starten. Deel
-        daarna alleen de kijklink.
-      </p>
-      {failure && <p role="alert">{failures[failure]}</p>}
-      {api && (
-        <a
-          className="primary"
-          href={slackLoginUrl(api, theme.variant)}
-          rel="noreferrer"
-        >
-          Log in met Slack {theme.icon}
-        </a>
-      )}
-      <p>
-        <a href={localHash(theme.variant)}>Liever handmatig draaien</a>
-      </p>
     </div>
   );
 }

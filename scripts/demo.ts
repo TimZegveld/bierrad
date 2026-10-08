@@ -135,7 +135,7 @@ export default {
     // Known bug, shown on the panel once seen: under the page's no-referrer policy the
     // browser sends "Origin: null" with the login form, which the worker refuses.
     let forwarded = request;
-    if (["/auth/slack/member", "/auth/slack/join"].includes(url.pathname) && request.headers.get("Origin") === "null") {
+    if (url.pathname === "/auth/slack/member" && request.headers.get("Origin") === "null") {
       const headers = new Headers(request.headers);
       headers.set("Origin", env.FRONTEND_ORIGIN);
       forwarded = new Request(request, { headers });

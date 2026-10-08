@@ -1,10 +1,9 @@
 import { isChannelVariant, type ChannelVariant } from "../shared/channel";
 import { reviewBody, settledCallBody } from "./channel/messages";
-import { roundTitle, themes, type WheelVariant } from "../shared/variant";
+import { roundTitle, type WheelVariant } from "../shared/variant";
 import { SlackApiClient, SlackError } from "./slack/api";
 import {
   SlackReactionParticipantSource,
-  parseSlackPermalink,
   type SlackSource,
 } from "./slack/source";
 import {
@@ -13,15 +12,10 @@ import {
   postResult,
   updateMessage,
   MAX_CARD_ATTEMPTS,
-  postReminder,
-  reminderBody,
-  MAX_REMINDER_POSTS,
 } from "./slack/state";
 import {
   CHANNEL_GRANT,
-  LOGIN_GRANT,
   slackAllowed,
-  slackCeiling,
   slackEnvironment,
   type SlackSecrets,
 } from "./slack/access";
@@ -41,12 +35,7 @@ import {
   settleReviewJob,
   submitReview,
 } from "./reviews";
-import {
-  DEFAULT_SESSION_REVIEW_SETTINGS,
-  MAX_MEMBERS,
-  type JoinResult,
-  type ReviewBallot,
-} from "../shared/reviews";
+import type { ReviewBallot } from "../shared/reviews";
 import { createSession } from "../src/domain/drawEngine";
 import { SCHEDULE_RETENTION_MS } from "../shared/retention";
 import {
@@ -61,7 +50,7 @@ import {
   RequestError,
   type StoredSession,
 } from "./session";
-import { frontend, json } from "./http";
+import { json } from "./http";
 import type { ClientRole } from "../src/domain/models";
 import type { ServerToClientMessage } from "../shared/protocol";
 
@@ -92,24 +81,13 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
   async initialize(
     hostHash: string,
     spectatorHash: string,
-    grant?: { hash: string; expiresAt: number },
     variant: WheelVariant = "beer",
-    locator?: string,
   ): Promise<string> {
     if (this.read()) throw new Error("unavailable");
     this.ctx.storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS session (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), value TEXT NOT NULL)",
     );
     const record = newSession(hostHash, spectatorHash, Date.now(), variant);
-    if (locator && /^[a-f0-9]{32}$/.test(locator)) record.locator = locator;
-    if (grant) {
-      record.slack = {
-        grantHash: grant.hash,
-        grantExpiresAt: grant.expiresAt,
-        mapping: {},
-      };
-      record.expiresAt = Math.min(record.expiresAt, grant.expiresAt);
-    }
     this.save(record);
     await this.ctx.storage.setAlarm(record.expiresAt);
     return new Date(record.expiresAt).toISOString();
@@ -187,58 +165,7 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
   ): ServerToClientMessage {
     return {
       type: "snapshot",
-      session: {
-        ...publicSession(record),
-        ...(role === "host" && record.slack
-          ? {
-              slack: {
-                enabled: slackAllowed(
-                  record.slack.grantHash,
-                  slackEnvironment(this.env, record.variant),
-                ),
-                source: record.slack.source
-                  ? ("slack" as const)
-                  : ("manual" as const),
-                importing:
-                  !!record.slack.importing &&
-                  record.slack.importing.until > Date.now(),
-                count: record.slack.count,
-                syncedAt: record.slack.syncedAt,
-                ...(record.slack.job
-                  ? {
-                      result: {
-                        drawId: record.slack.job.drawId,
-                        status: record.slack.job.status,
-                        ...(record.slack.job.status === "failed"
-                          ? { retryAt: record.slack.job.retryAt }
-                          : {}),
-                      },
-                    }
-                  : {}),
-                ...(record.slack.reminder
-                  ? {
-                      reminder: {
-                        startAt: record.slack.reminder.startAt,
-                        status: record.slack.reminder.status,
-                      },
-                    }
-                  : {}),
-                ...(record.slack.grantHash === LOGIN_GRANT
-                  ? {
-                      reviews: {
-                        enabled: (
-                          record.reviews ?? DEFAULT_SESSION_REVIEW_SETTINGS
-                        ).enabled,
-                        minutes: (
-                          record.reviews ?? DEFAULT_SESSION_REVIEW_SETTINGS
-                        ).minutes,
-                      },
-                    }
-                  : {}),
-              },
-            }
-          : {}),
-      },
+      session: publicSession(record),
       role,
       serverNow: Date.now(),
     };
@@ -269,82 +196,14 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
     }
     const role: ClientRole | undefined = equalHash(hash, record.hostHash)
       ? "host"
-      : equalHash(hash, record.spectatorHash) ||
-          this.joinRole(record, hash) !== undefined
+      : equalHash(hash, record.spectatorHash)
         ? "spectator"
         : undefined;
     if (!role) throw new RequestError(404, "unavailable");
     return role;
   }
-  /** Join and personal links of a session: both watch like spectators. */
-  private joinRole(
-    record: StoredSession,
-    hash: string,
-  ): { pseudonym?: string } | undefined {
-    const reviews = record.reviews;
-    if (!reviews?.joinHash) return;
-    if (equalHash(hash, reviews.joinHash)) return {};
-    const member = reviews.members?.find((m) => equalHash(hash, m.hash));
-    return member ? { pseudonym: member.pseudonym } : undefined;
-  }
-  /**
-   * Gives a login-started Slack session its review key and join link, once,
-   * before anything can draw. Needs the session's own locator.
-   */
-  private async ensureReviewKeys() {
-    const before = this.read();
-    if (
-      !before ||
-      before.slack?.grantHash !== LOGIN_GRANT ||
-      !before.locator ||
-      before.reviews?.key
-    )
-      return;
-    const app = frontend(this.env);
-    if (!app) return;
-    const join = randomHex(),
-      key = randomHex();
-    const joinHash = await hashSecret(join);
-    const record = this.read();
-    if (!record || record.reviews?.key || !record.locator) return;
-    record.reviews = {
-      ...(record.reviews ?? DEFAULT_SESSION_REVIEW_SETTINGS),
-      key,
-      joinHash,
-      link: `${app.href}#/meedoen/${record.locator}.${join}`,
-      members: [],
-    };
-    this.save(record);
-  }
-  async access(
-    secret: string,
-    command: unknown,
-    locator?: string,
-  ): Promise<Response> {
+  async access(secret: string, command: unknown): Promise<Response> {
     try {
-      // Sessions from before reviews learn their own name from the Worker.
-      const known = this.read();
-      if (
-        known &&
-        !known.locator &&
-        locator &&
-        /^[a-f0-9]{32}$/.test(locator)
-      ) {
-        known.locator = locator;
-        this.save(known);
-      }
-      await this.ensureReviewKeys();
-      // Hash an offered spectator link up front, so no await separates the
-      // read below from the comparison and mutation.
-      const offered =
-        command &&
-        typeof command === "object" &&
-        "spectatorCapability" in command &&
-        typeof command.spectatorCapability === "string"
-          ? command.spectatorCapability
-          : undefined;
-      const parsed = parseCapability(offered ?? null);
-      const offeredHash = parsed ? await hashSecret(parsed.secret) : undefined;
       const role = await this.authenticate(secret);
       // Re-read after the await, protecting concurrent requests/expiry.
       const record = this.read();
@@ -355,52 +214,8 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
         this.save(record);
         this.broadcast(record);
       }
-      if (
-        command &&
-        typeof command === "object" &&
-        "type" in command &&
-        command.type === "slackImport"
-      ) {
-        return await this.importSlack(record, role, command);
-      }
-      if (
-        command &&
-        typeof command === "object" &&
-        "type" in command &&
-        command.type === "slackRetry" &&
-        !slackAllowed(
-          record.slack?.grantHash,
-          slackEnvironment(this.env, record.variant),
-        )
-      )
-        throw new RequestError(403, "forbidden");
-      if (
-        command &&
-        typeof command === "object" &&
-        "type" in command &&
-        command.type === "setScheduledDraw" &&
-        "startAt" in command &&
-        command.startAt !== null &&
-        record.slack
-      ) {
-        if (role !== "host") throw new RequestError(403, "forbidden");
-        const ceiling = slackCeiling(
-          record.slack,
-          slackEnvironment(this.env, record.variant),
-        );
-        if (ceiling === undefined)
-          throw new RequestError(403, "schedule_access_expires");
-      }
       if (command !== null) {
-        mutate(
-          record,
-          role,
-          command,
-          Date.now(),
-          offeredHash && equalHash(offeredHash, record.spectatorHash)
-            ? offered
-            : undefined,
-        );
+        mutate(record, role, command, Date.now());
         this.save(record);
         await this.openRoundReview();
       }
@@ -552,7 +367,6 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
       this.save(record);
       this.broadcast(record);
     }
-    await this.processSlackReminder();
     await this.processChannelRefresh();
     await this.processScheduledDraw();
     await this.processSlackResult();
@@ -562,112 +376,6 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
     if (latest && Date.now() < latest.expiresAt)
       await this.ctx.storage.setAlarm(nextDeadline(latest));
   }
-  /** Same claim-before-I/O discipline as results; ambiguous posts never repeat. */
-  private async processSlackReminder() {
-    const record = this.read();
-    const reminder = record?.slack?.reminder;
-    if (!record || Date.now() >= record.expiresAt || !reminder) return;
-    const settle = (target: StoredSession, status = reminder.status) => {
-      const r = target.slack!.reminder!;
-      r.status = status;
-      delete r.capability;
-      delete r.retryAt;
-      target.revision++;
-      this.save(target);
-      this.broadcast(target);
-    };
-    if (reminder.status === "posting") {
-      if (Date.now() >= reminder.attemptedAt! + 120000)
-        settle(record, "uncertain");
-      return;
-    }
-    const due =
-      reminder.status === "pending"
-        ? reminder.readyAt
-        : reminder.status === "failed" && reminder.capability
-          ? (reminder.retryAt ?? Infinity)
-          : Infinity;
-    if (due > Date.now()) return;
-    const slack = record.slack!;
-    const env = slackEnvironment(this.env, record.variant);
-    const app = frontend(this.env);
-    if (
-      Date.now() >= Date.parse(reminder.startAt) ||
-      !slack.source ||
-      !reminder.capability ||
-      !app ||
-      (slack.reminderPosts ?? 0) >= MAX_REMINDER_POSTS ||
-      !slackAllowed(slack.grantHash, env)
-    ) {
-      settle(record, reminder.status === "pending" ? "skipped" : "failed");
-      return;
-    }
-    // With reviews the thread gets the join link: watch, or log in to review.
-    const join = record.reviews?.enabled ? record.reviews.link : undefined;
-    const body = reminderBody(
-      slack.source,
-      record.variant ?? "beer",
-      join ?? `${app.href}#/live/${reminder.capability}`,
-      reminder.startAt,
-      Date.now(),
-      !!join,
-    );
-    const id = reminder.id;
-    // Claim synchronously before any await. Persist + arm crash recovery before external I/O.
-    reminder.status = "posting";
-    reminder.attemptedAt = Date.now();
-    reminder.attempts++;
-    slack.reminderPosts = (slack.reminderPosts ?? 0) + 1;
-    record.revision++;
-    this.save(record);
-    this.broadcast(record);
-    await this.ctx.storage.setAlarm(nextDeadline(record));
-    await this.ctx.storage.sync();
-    const current = this.read();
-    if (
-      !current ||
-      Date.now() >= current.expiresAt ||
-      current.slack?.reminder?.id !== id ||
-      current.slack.reminder.status !== "posting"
-    )
-      return;
-    if (
-      !slackAllowed(
-        current.slack.grantHash,
-        slackEnvironment(this.env, current.variant),
-      )
-    ) {
-      settle(current, "failed");
-      return;
-    }
-    const result = await postReminder(
-      new SlackApiClient(env.SLACK_BOT_TOKEN!),
-      body,
-    );
-    const latest = this.read();
-    const r = latest?.slack?.reminder;
-    if (
-      !latest ||
-      Date.now() >= latest.expiresAt ||
-      r?.id !== id ||
-      r.status !== "posting"
-    )
-      return;
-    // A definite rejection gets one automatic retry, but only before the start.
-    if (
-      result.status === "failed" &&
-      r.attempts < 2 &&
-      result.retryAt < Date.parse(r.startAt)
-    ) {
-      r.status = "failed";
-      r.retryAt = result.retryAt;
-      latest.revision++;
-      this.save(latest);
-      this.broadcast(latest);
-      return;
-    }
-    settle(latest, result.status);
-  }
   private async processChannelRefresh() {
     const record = this.read();
     if (!record || Date.now() >= record.expiresAt) return;
@@ -675,10 +383,7 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
     if (at === undefined || at > Date.now()) return;
     try {
       // Slack errors are absorbed inside and push the next attempt back.
-      await this.importSlack(record, "host", {
-        type: "slackImport",
-        revision: record.revision,
-      });
+      await this.importSlack(record);
     } catch {
       // Refused before any Slack call (for example revoked access): back off.
       const current = this.read();
@@ -720,16 +425,7 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
     if (ready && record.slack?.source) {
       try {
         // One separately rate-limited final check, even after a recent normal refresh.
-        const result = await this.importSlack(
-          record,
-          "host",
-          {
-            type: "slackImport",
-            revision: record.revision,
-          },
-          true,
-        );
-        ready = result.ok;
+        ready = await this.importSlack(record, true);
       } catch {
         ready = false;
       }
@@ -777,121 +473,6 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
     this.broadcast(record);
     await this.ctx.storage.setAlarm(nextDeadline(record));
   }
-  /**
-   * A form POST from the join page of a login-started session: allowed for
-   * its join and personal links, a bounded number per minute. Resolves the
-   * session's variant (its Slack app), or null.
-   */
-  async joinLoginAllowed(secret: string): Promise<WheelVariant | null> {
-    const hash = await hashSecret(secret);
-    const record = this.read();
-    if (
-      !record ||
-      Date.now() >= record.expiresAt ||
-      !record.reviews?.enabled ||
-      this.joinRole(record, hash) === undefined ||
-      !slackAllowed(
-        record.slack?.grantHash,
-        slackEnvironment(this.env, record.variant),
-      )
-    )
-      return null;
-    const reviews = record.reviews;
-    const now = Date.now();
-    if (now - (reviews.loginWindow ?? 0) >= 60000) {
-      reviews.loginWindow = now;
-      reviews.logins = 0;
-    }
-    if ((reviews.logins ?? 0) >= 30) return null;
-    reviews.logins = (reviews.logins ?? 0) + 1;
-    this.save(record);
-    return record.variant ?? "beer";
-  }
-  /**
-   * After Sign in with Slack: a personal link for this session only. Keeps a
-   * pseudonym; a new login replaces that person's previous link.
-   */
-  async addMember(userId: string): Promise<string> {
-    const secret = randomHex();
-    const hash = await hashSecret(secret);
-    const key = this.read()?.reviews?.key;
-    if (!key) throw new RequestError(404, "unavailable");
-    const name = await pseudonym(key, userId);
-    const record = this.read();
-    if (
-      !record ||
-      Date.now() >= record.expiresAt ||
-      !record.locator ||
-      record.reviews?.key !== key
-    )
-      throw new RequestError(404, "unavailable");
-    const members = (record.reviews.members ?? []).filter(
-      (m) => m.pseudonym !== name,
-    );
-    while (members.length >= MAX_MEMBERS) members.shift();
-    members.push({ hash, pseudonym: name });
-    record.reviews.members = members;
-    this.save(record);
-    return `${record.locator}.${secret}`;
-  }
-  /** `/api/join`: the join page, or one person's own status, review and logout. */
-  async joinAccess(secret: string, command: unknown): Promise<Response> {
-    try {
-      const hash = await hashSecret(secret);
-      let record = this.read();
-      if (!record || Date.now() >= record.expiresAt)
-        throw new RequestError(404, "unavailable");
-      const who = this.joinRole(record, hash);
-      if (!who) throw new RequestError(404, "unavailable");
-      const member = who.pseudonym;
-      if (command !== null) {
-        const input = command as Record<string, unknown>;
-        if (
-          !input ||
-          typeof input !== "object" ||
-          Array.isArray(input) ||
-          !member
-        )
-          throw new RequestError(member ? 400 : 403, member ? "invalid" : "forbidden");
-        if (input.type === "logout" && Object.keys(input).length === 1) {
-          record.reviews!.members = record.reviews!.members!.filter(
-            (m) => m.pseudonym !== member,
-          );
-          this.save(record);
-          return json({ type: "loggedOut" } satisfies JoinResult);
-        }
-        if (
-          input.type !== "review" ||
-          Object.keys(input).some(
-            (k) => !["type", "drawId", "scores", "texts"].includes(k),
-          )
-        )
-          throw new RequestError(400, "invalid");
-        const outcome = await this.submitRoundReview(member, input.drawId, {
-          scores: input.scores,
-          texts: input.texts,
-        });
-        if (outcome.code)
-          throw new RequestError(outcome.status ?? 400, outcome.code);
-        record = this.read();
-        if (!record) throw new RequestError(404, "unavailable");
-      }
-      return json({
-        type: "status",
-        status: {
-          role: member ? "member" : "join",
-          variant: record.variant ?? "beer",
-          minutes: (record.reviews ?? DEFAULT_SESSION_REVIEW_SETTINGS).minutes,
-          ...(member ? { member: await this.memberRound(member) } : {}),
-        },
-      } satisfies JoinResult);
-    } catch (error) {
-      return json(
-        { code: error instanceof RequestError ? error.code : "unavailable" },
-        error instanceof RequestError ? error.status : 503,
-      );
-    }
-  }
   /** For a personal channel link: whether this person joined, and their ballot. */
   async memberRound(
     member: string,
@@ -900,14 +481,9 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
     if (!record || Date.now() >= record.expiresAt) return {};
     const ballot = reviewBallot(record, member, Date.now());
     if (ballot) return { participating: true, ballot };
-    // Before a draw: a channel round's key, or a Bierrad session's own.
-    const review = record.review;
+    // Before the draw only: the round's own key.
     const key =
-      review?.status === "waiting"
-        ? review.key
-        : review?.status === "open"
-          ? undefined
-          : record.reviews?.key;
+      record.review?.status === "waiting" ? record.review.key : undefined;
     if (!key) return {};
     for (const id of Object.keys(record.slack?.mapping ?? {}))
       if (equalHash(await pseudonym(key, id), member))
@@ -937,32 +513,22 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
     await this.ctx.storage.setAlarm(nextDeadline(record));
     return {};
   }
+  /**
+   * Re-reads the call's reactions. Only the server calls this, for channel
+   * rounds; resolves whether the participants are now current.
+   */
   private async importSlack(
     record: StoredSession,
-    role: ClientRole,
-    raw: object,
     finalCheck = false,
-  ): Promise<Response> {
-    const command = raw as Record<string, unknown>;
+  ): Promise<boolean> {
     if (
-      role !== "host" ||
       !slackAllowed(
         record.slack?.grantHash,
         slackEnvironment(this.env, record.variant),
       )
     )
       throw new RequestError(403, "forbidden");
-    if (
-      Object.keys(command).some(
-        (k) => !["type", "revision", "permalink"].includes(k),
-      ) ||
-      ("permalink" in command && typeof command.permalink !== "string")
-    )
-      throw new RequestError(400, "invalid");
-    if (
-      command.revision !== record.revision ||
-      !getCapabilities(role, record.session).canManageParticipants
-    )
+    if (!getCapabilities("host", record.session).canManageParticipants)
       throw new RequestError(409, "not_ready");
     if (!finalCheck && record.scheduledDraw?.status === "refreshing")
       throw new RequestError(409, "not_ready");
@@ -975,13 +541,7 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
         : (state.nextImportAt ?? 0)) > Date.now()
     )
       throw new RequestError(429, "slack_rate_limited");
-    const source =
-      command.permalink !== undefined
-        ? parseSlackPermalink(
-            command.permalink,
-            themes[record.variant ?? "beer"].reaction,
-          )
-        : state.source;
+    const source = state.source;
     if (!source) throw new RequestError(400, "slack_link");
     const id = crypto.randomUUID();
     state.importing = { id, until: Date.now() + 120000 };
@@ -1013,11 +573,8 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
       current.revision++;
       this.save(current);
       this.broadcast(current);
-      const result = this.message(current, role);
       await this.ctx.storage.setAlarm(nextDeadline(current));
-      if (Date.now() >= current.expiresAt)
-        throw new RequestError(404, "unavailable");
-      return json(result);
+      return Date.now() < current.expiresAt;
     } catch (error) {
       const current = this.read();
       if (
@@ -1037,19 +594,7 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
         this.broadcast(current);
         await this.ctx.storage.setAlarm(nextDeadline(current));
       }
-      return json(
-        {
-          code:
-            error instanceof SlackError
-              ? error.code
-              : error instanceof RequestError
-                ? error.code
-                : "slack_unavailable",
-        },
-        error instanceof SlackError && error.code === "slack_rate_limited"
-          ? 429
-          : 400,
-      );
+      return false;
     }
   }
   private async processSlackResult() {

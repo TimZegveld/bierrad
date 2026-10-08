@@ -105,10 +105,16 @@ const rejects = (promise: Promise<unknown>, reason: string) =>
 test("login start sends only public OIDC parameters and a host-only short-lived cookie", async () => {
   assert.throws(
     () =>
-      beginLogin({ ...env, SLACK_CLIENT_SECRET: undefined }, "beer", redirect),
+      beginLogin({ ...env, SLACK_CLIENT_SECRET: undefined }, "coffee", redirect, Date.now(), "C00000001"),
     (e: unknown) => e instanceof LoginError && e.reason === "unavailable",
   );
-  const start = beginLogin(env, "beer", redirect);
+  // A login only binds a channel or gives a personal link; none starts a session.
+  for (const variant of ["beer", "coffee"] as const)
+    assert.throws(
+      () => beginLogin(env, variant, redirect),
+      (e: unknown) => e instanceof LoginError && e.reason === "expired",
+    );
+  const start = beginLogin(env, "coffee", redirect, Date.now(), "C00000001");
   const url = new URL(start.location);
   assert.equal(
     url.origin + url.pathname,
@@ -122,7 +128,7 @@ test("login start sends only public OIDC parameters and a host-only short-lived 
   assert.ok(!start.location.includes(env.SLACK_CLIENT_SECRET));
   assert.ok(!start.location.includes(env.SLACK_BOT_TOKEN));
   for (const attribute of [
-    `${LOGIN_COOKIE}=beer.`,
+    `${LOGIN_COOKIE}=channel-C00000001.`,
     "Path=/",
     "Max-Age=600",
     "HttpOnly",
@@ -132,11 +138,14 @@ test("login start sends only public OIDC parameters and a host-only short-lived 
     assert.ok(start.cookie.includes(attribute));
   assert.ok(!start.cookie.includes("Domain"));
   const pending = parseLoginCookie(start.cookie.split(";")[0]);
-  assert.equal(pending?.variant, "beer");
-  // Only the Bierrad starts with Slack: a plain coffee or water login is refused.
-  for (const other of ["coffee", "water"])
+  assert.equal(pending?.variant, "coffee");
+  assert.equal(pending?.channelId, "C00000001");
+  // Plain and session-join logins of the removed Slack start are refused.
+  for (const other of ["beer", "coffee", `join-beer-${"a".repeat(32)}`])
     assert.equal(
-      parseLoginCookie(start.cookie.split(";")[0].replace("=beer.", `=${other}.`)),
+      parseLoginCookie(
+        start.cookie.split(";")[0].replace("=channel-C00000001.", `=${other}.`),
+      ),
       undefined,
     );
   assert.equal(pending?.state, url.searchParams.get("state"));
@@ -144,7 +153,7 @@ test("login start sends only public OIDC parameters and a host-only short-lived 
 });
 
 test("login cookie parsing fails closed on expiry, duplicates and malformed values", () => {
-  const value = `beer.${randomHex()}.${randomHex()}.${Date.now() + 60000}`;
+  const value = `channel-C00000001.${randomHex()}.${randomHex()}.${Date.now() + 60000}`;
   assert.ok(parseLoginCookie(`other=1; ${LOGIN_COOKIE}=${value}`));
   assert.equal(parseLoginCookie(null), undefined);
   assert.equal(
@@ -158,7 +167,7 @@ test("login cookie parsing fails closed on expiry, duplicates and malformed valu
     undefined,
   );
   assert.equal(
-    parseLoginCookie(`${LOGIN_COOKIE}=${value.replace("beer", "tea")}`),
+    parseLoginCookie(`${LOGIN_COOKIE}=${value.replace("channel-C00000001", "tea")}`),
     undefined,
   );
 });

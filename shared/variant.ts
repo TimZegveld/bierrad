@@ -13,13 +13,6 @@ export const standaloneVariants: readonly StandaloneVariant[] = ["beer", "coffee
 export function isStandaloneVariant(value: unknown): value is StandaloneVariant {
   return (standaloneVariants as readonly unknown[]).includes(value);
 }
-/**
- * Only the Bierrad starts with Sign in with Slack on a Friday message; the
- * Koffierad reaches Slack solely through its channel binding.
- */
-export function startsWithSlack(value: unknown): value is "beer" {
-  return value === "beer";
-}
 /** Slack reactions a variant counts; each variant reads only its own. */
 export type SlackReaction = "beers" | "coffee" | "droplet" | "cookie";
 /** The Slack app whose server-side credentials a variant uses; water and the Koekrad share the Koffierad app. */
@@ -190,11 +183,16 @@ export function localVariant(hash: string): StandaloneVariant | undefined {
   const name = /^#\/([a-z]+)$/.exec(hash)?.[1];
   return isStandaloneVariant(name) ? name : undefined;
 }
-/** Old water and Koffierad Slack routes open the Koffierad, so saved links keep working. */
+/**
+ * Retired routes open a local wheel, so saved links keep working: old water
+ * and Koffierad Slack routes the Koffierad, the removed Bierrad Slack start
+ * and its session join links the Bierrad.
+ */
 export function retiredRoute(hash: string): string | undefined {
-  return /^#\/(?:water|(?:water|coffee)-slack(?:\/[a-z]+)?)$/.test(hash)
-    ? localHash("coffee")
-    : undefined;
+  if (/^#\/(?:water|(?:water|coffee)-slack(?:\/[a-z]+)?)$/.test(hash))
+    return localHash("coffee");
+  if (/^#\/(?:slack(?:\/[a-z]+)?|meedoen(?:-login)?\/[A-Za-z0-9._-]+)$/.test(hash))
+    return localHash("beer");
 }
 /** The variant whose Slack reaction this is; reactions are never shared. */
 export function reactionVariant(reaction: SlackReaction): WheelVariant {

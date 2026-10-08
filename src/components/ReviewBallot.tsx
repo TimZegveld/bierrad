@@ -170,12 +170,9 @@ export function ReviewJoin({
   apiUrl,
   capability,
   viewLink,
-  path = "/auth/slack/member",
   explanation = "Log in om na afloop de haler te beoordelen.",
 }: {
   apiUrl: string;
-  /** `/auth/slack/member` for a channel, `/auth/slack/join` for a session. */
-  path?: string;
   explanation?: string;
   capability: string;
   viewLink?: string;
@@ -187,7 +184,7 @@ export function ReviewJoin({
     <form
       className="review-join"
       method="post"
-      action={`${apiUrl}${path}`}
+      action={`${apiUrl}/auth/slack/member`}
     >
       <input type="hidden" name="capability" value={capability} />
       <button type="submit" className="primary">

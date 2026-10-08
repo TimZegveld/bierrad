@@ -340,35 +340,6 @@ header {
   font-weight: 700;
   font-size: 13px;
 }
-.source-tabs {
-  display: flex;
-  background: var(--tint);
-  border-radius: 9px;
-  padding: 4px;
-  gap: 2px;
-  margin: 23px 0;
-  font-size: 11px;
-  align-items: center;
-}
-.source-tabs > span {
-  background: var(--surface);
-  border-radius: 6px;
-  padding: 9px 13px;
-  box-shadow: 0 1px 3px var(--shadow-tab);
-  font-weight: 700;
-}
-.source-tabs button {
-  border: 0;
-  background: none;
-  padding: 7px;
-  font-size: 11px;
-  flex: 1;
-}
-.source-tabs small {
-  font-size: 8px;
-  display: block;
-  margin-top: 2px;
-}
 label {
   display: block;
   font-size: 11px;
@@ -860,52 +831,6 @@ footer b {
   color: inherit;
   text-decoration: none;
 }
-
-.source-tabs button[aria-pressed="true"] {
-  background: var(--surface);
-  border-radius: 6px;
-  box-shadow: 0 1px 3px var(--shadow-tab);
-  font-weight: 700;
-}
-.slack-import {
-  margin-bottom: 24px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--border);
-}
-.slack-import input {
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-}
-.slack-import p,
-.slack-result {
-  font-size: 12px;
-  line-height: 1.6;
-}
-.slack-import .primary {
-  width: 100%;
-  padding: 12px 8px;
-  font-size: 12px;
-}
-.slack-result {
-  max-width: 540px;
-  margin: 16px auto;
-  padding: 8px 18px;
-  border-radius: 12px;
-  background: var(--tint-warm);
-  text-align: center;
-}
-
-.slack-import > button,
-.slack-result button {
-  border: 1px solid var(--border-mid);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
-  padding: 9px 14px;
-  font: inherit;
-  cursor: pointer;
-}
 .secret-backdrop {
   position: fixed;
   inset: 0;
@@ -1280,35 +1205,12 @@ footer b {
   min-width: 0;
   box-sizing: border-box;
 }
-.schedule-controls .share-toggle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 14px;
-}
-.schedule-controls .share-toggle input {
-  width: auto;
-  margin: 0;
-}
 .schedule-controls button {
   padding: 12px;
   border: 1px solid var(--border-mid);
   border-radius: 12px;
   background: var(--tint-warm);
 }
-.auto-refresh-toggle {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 16px;
-  font-size: 14px;
-}
-.slack-import .auto-refresh-toggle input {
-  width: auto;
-  flex: 0 0 auto;
-  margin: 0;
-}
-
 /* Spectator presentation: one viewport, the wheels are the stars. */
 .spectator {
   --gap: clamp(18px, 3vw, 56px);
@@ -2144,19 +2046,6 @@ details.member-hint summary::-webkit-details-marker {
     transition: none;
   }
 }
-.slack-reviews {
-  display: grid;
-  gap: 8px;
-  margin-top: 12px;
-}
-.slack-reviews select {
-  padding: 4px 6px;
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  background: var(--surface);
-  font: inherit;
-}
-
 /* Shortcut hint: small and quiet in the corner, like a presenter cheat line. */
 body {
   padding-bottom: 32px;

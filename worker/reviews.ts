@@ -75,60 +75,6 @@ export function reviewTimes(
   };
 }
 /**
- * Reviews of a host-started Slack session (Bierrad). The key and the join
- * link live until the session ends; personal links keep only a pseudonym.
- */
-export interface SessionReviews {
-  enabled: boolean;
-  minutes: number;
-  /** Random HMAC key for this session's pseudonyms. */
-  key?: string;
-  /** Hash of the join link, which is posted in the Slack thread. */
-  joinHash?: string;
-  /** The full join URL, built from FRONTEND_URL; only ever sent to Slack. */
-  link?: string;
-  members?: { hash: string; pseudonym: string }[];
-  loginWindow?: number;
-  logins?: number;
-}
-/**
- * Called when a host-started session draws. A new draw cancels a review that
- * is still open: those votes are dropped and nothing is posted.
- */
-export function prepareSessionReview(record: StoredSession): void {
-  const settings = record.reviews,
-    slack = record.slack,
-    draw = record.session.activeDraw;
-  // Channel rounds set up their own review when they are created.
-  if (slack?.channelRound) return;
-  if (record.review?.status !== "closed") delete record.review;
-  if (
-    !settings?.enabled ||
-    !settings.key ||
-    !settings.link ||
-    !slack?.source ||
-    slack.channelRound ||
-    !draw
-  )
-    return;
-  record.review = {
-    minutes: settings.minutes,
-    key: settings.key,
-    link: settings.link,
-    status: "waiting",
-  };
-  // Invite in the winner post only when someone can review someone else.
-  const slackIds = new Set(Object.values(slack.mapping));
-  const winners = draw.spins.map((s) => s.winnerId);
-  const voters = draw.participantIds.filter((id) => slackIds.has(id));
-  const invite =
-    winners.some((w) => slackIds.has(w)) &&
-    voters.some((v) => winners.some((w) => w !== v && slackIds.has(w)));
-  const times = reviewTimes(record, settings.minutes);
-  if (invite && times && slack.job)
-    slack.job.review = { until: times.closesAt, link: settings.link };
-}
-/**
  * Freezes who may vote on which winner when the draw starts. `pseudonyms`
  * maps every Slack participant of the draw to its pseudonym.
  */

@@ -2,8 +2,6 @@ import type { WheelVariant } from "../shared/variant";
 import {
   queueChannelNotice,
   queueResult,
-  REMINDER_LEAD_MS,
-  REMINDER_MIN_LEAD_MS,
   type SlackState,
 } from "./slack/state";
 import {
@@ -12,17 +10,7 @@ import {
   advanceDraw,
 } from "../src/domain/drawEngine";
 import { getCapabilities } from "../src/domain/capabilities";
-import {
-  prepareSessionReview,
-  reviewDeadline,
-  reviewProgress,
-  type RoundReview,
-  type SessionReviews,
-} from "./reviews";
-import {
-  DEFAULT_SESSION_REVIEW_SETTINGS,
-  validSessionReviewMinutes,
-} from "../shared/reviews";
+import { reviewDeadline, reviewProgress, type RoundReview } from "./reviews";
 import { validateParticipants } from "../src/utils/participants";
 import type { BeerWheelSession, ClientRole } from "../src/domain/models";
 import type { ScheduledDraw, PublicBeerWheelSession } from "../shared/protocol";
@@ -62,12 +50,8 @@ export interface StoredSession {
   slack?: SlackState;
   scheduledDraw?: ScheduledDraw;
   scheduleCheckUntil?: number;
-  /** The review of the latest draw, while it runs. */
+  /** Channel rounds: the review of the draw, while it runs. */
   review?: RoundReview;
-  /** Host-started Slack sessions: review settings, key and personal links. */
-  reviews?: SessionReviews;
-  /** This session's object name; it grants nothing by itself. */
-  locator?: string;
 }
 export function newSession(
   hostHash: string,
@@ -220,12 +204,6 @@ export function nextDeadline(record: StoredSession): number {
   if (slack?.card?.status === "pending") times.push(slack.card.readyAt);
   if (slack?.card?.status === "updating")
     times.push(slack.card.attemptedAt! + 120000);
-  const reminder = slack?.reminder;
-  if (reminder?.status === "pending") times.push(reminder.readyAt);
-  if (reminder?.status === "posting")
-    times.push(reminder.attemptedAt! + 120000);
-  if (reminder?.status === "failed" && reminder.capability && reminder.retryAt)
-    times.push(reminder.retryAt);
   if (draw && s.state === "countdown") times.push(Date.parse(draw.startAt));
   if (draw && ["countdown", "spinning"].includes(s.state))
     times.push(
@@ -235,20 +213,11 @@ export function nextDeadline(record: StoredSession): number {
     );
   return Math.min(...times);
 }
-/** Drops any reminder, and with it the stored raw spectator capability. */
-function clearReminder(record: StoredSession) {
-  if (record.slack) delete record.slack.reminder;
-}
-/**
- * `verifiedSpectator` is the command's spectator capability only after the
- * caller has matched its hash to the stored spectator hash; otherwise absent.
- */
 export function mutate(
   record: StoredSession,
   role: ClientRole,
   input: unknown,
   now: number,
-  verifiedSpectator?: string,
 ): void {
   if (now >= record.expiresAt) throw new RequestError(404, "unavailable");
   if (role !== "host") throw new RequestError(403, "forbidden");
@@ -265,13 +234,10 @@ export function mutate(
   const allowed: Record<string, string[]> = {
     setParticipants: ["names"],
     setWinnerCount: ["count"],
-    setScheduledDraw: ["startAt", "spectatorCapability"],
+    setScheduledDraw: ["startAt"],
     startDraw: [],
     reset: [],
     endSession: [],
-    slackManual: [],
-    slackRetry: [],
-    setReviews: ["enabled", "minutes"],
   };
   if (
     typeof command.type !== "string" ||
@@ -365,17 +331,9 @@ export function mutate(
       break;
     case "setScheduledDraw": {
       require(caps.canManageParticipants);
-      const notify = command.spectatorCapability;
       if (command.startAt === null) {
-        if (notify !== undefined) throw new RequestError(400, "invalid");
         delete record.scheduledDraw;
-        clearReminder(record);
         break;
-      }
-      if (notify !== undefined) {
-        if (typeof notify !== "string" || notify !== verifiedSpectator)
-          throw new RequestError(403, "forbidden");
-        if (!record.slack?.source) throw new RequestError(409, "slack_link");
       }
       const at =
         typeof command.startAt === "string" ? Date.parse(command.startAt) : NaN;
@@ -386,28 +344,11 @@ export function mutate(
         at > now + MAX_SCHEDULE_AHEAD_MS
       )
         throw new RequestError(400, "invalid_schedule");
-      const extendedExpiry = at + SCHEDULE_RETENTION_MS;
-      if (
-        record.slack &&
-        extendedExpiry > (record.slack.grantExpiresAt ?? record.expiresAt)
-      )
-        throw new RequestError(400, "schedule_access_expires");
-      record.expiresAt = Math.max(record.expiresAt, extendedExpiry);
+      record.expiresAt = Math.max(record.expiresAt, at + SCHEDULE_RETENTION_MS);
       record.scheduledDraw = {
         startAt: command.startAt as string,
         status: "pending",
       };
-      clearReminder(record);
-      // Too close to the start to be useful: plan the draw without a reminder.
-      if (notify !== undefined && at - now >= REMINDER_MIN_LEAD_MS)
-        record.slack!.reminder = {
-          id: crypto.randomUUID(),
-          startAt: command.startAt as string,
-          readyAt: Math.max(now, at - REMINDER_LEAD_MS),
-          capability: notify as string,
-          status: "pending",
-          attempts: 0,
-        };
       break;
     }
     case "startDraw":
@@ -423,55 +364,18 @@ export function mutate(
       };
       if (record.slack) delete record.slack.job;
       queueResult(record);
-      prepareSessionReview(record);
       delete record.scheduledDraw;
-      clearReminder(record);
       record.draws++;
       break;
     case "reset":
       require(caps.canReset);
       delete record.scheduledDraw;
-      clearReminder(record);
       record.session = createSession(
         record.session.id,
         record.session.participants,
         record.preferredCount,
       );
       break;
-    case "slackManual":
-      require(caps.canManageParticipants);
-      if (!record.slack) throw new RequestError(403, "forbidden");
-      delete record.slack.source;
-      delete record.slack.syncedAt;
-      delete record.slack.count;
-      clearReminder(record);
-      // Keep private identities so a later import replaces these participants.
-      // Clearing the source above still disables Slack posting in manual mode.
-      break;
-    case "slackRetry": {
-      const job = record.slack?.job;
-      if (!job || job.status !== "failed" || now < (job.retryAt ?? Infinity))
-        throw new RequestError(409, "not_ready");
-      job.status = "pending";
-      job.readyAt = now;
-      break;
-    }
-    case "setReviews": {
-      // Only sessions started with Sign in with Slack can hold reviews.
-      if (!record.slack || record.slack.channelRound)
-        throw new RequestError(403, "forbidden");
-      if (
-        typeof command.enabled !== "boolean" ||
-        !validSessionReviewMinutes(command.minutes)
-      )
-        throw new RequestError(400, "invalid");
-      record.reviews = {
-        ...(record.reviews ?? DEFAULT_SESSION_REVIEW_SETTINGS),
-        enabled: command.enabled,
-        minutes: command.minutes,
-      };
-      break;
-    }
     case "endSession":
       record.expiresAt = now;
       break;

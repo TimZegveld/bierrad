@@ -1,8 +1,4 @@
 import { themes, type WheelVariant } from "../../shared/variant";
-import {
-  MAX_SCHEDULE_AHEAD_MS,
-  SCHEDULE_RETENTION_MS,
-} from "../../shared/retention";
 /** Optional server-only secrets; deliberately absent from Vite and public config. */
 export interface SlackSecrets {
   COFFEE_SLACK_BOT_TOKEN?: string;
@@ -14,12 +10,8 @@ export interface SlackSecrets {
   SLACK_CLIENT_ID?: string;
   SLACK_CLIENT_SECRET?: string;
 }
-/** The grant marker stored on every login-started Slack session. */
-export const LOGIN_GRANT = "slack-login";
 /** Marks rounds started by a channel-bound Koffierad (bound after Sign in with Slack). */
 export const CHANNEL_GRANT = "slack-channel";
-/** Fixed at creation: a full 30-day schedule plus its retention hour. */
-export const LOGIN_CEILING_MS = MAX_SCHEDULE_AHEAD_MS + SCHEDULE_RETENTION_MS;
 export function loginConfigured(env: SlackSecrets): boolean {
   return (
     !!env.SLACK_BOT_TOKEN &&
@@ -27,19 +19,15 @@ export function loginConfigured(env: SlackSecrets): boolean {
     /^\d{1,20}\.\d{1,20}$/.test(env.SLACK_CLIENT_ID ?? "")
   );
 }
-/** Only login-started sessions and channel rounds hold Slack rights; anything else fails closed. */
+/**
+ * Only channel rounds hold Slack rights; anything else, including sessions
+ * once started with Sign in with Slack, fails closed.
+ */
 export function slackAllowed(
   hash: string | undefined,
   env: SlackSecrets,
 ): boolean {
-  return (hash === LOGIN_GRANT || hash === CHANNEL_GRANT) && loginConfigured(env);
-}
-/** Revalidated scheduling ceiling, or undefined when Slack access is gone. */
-export function slackCeiling(
-  slack: { grantHash: string; grantExpiresAt?: number },
-  env: SlackSecrets,
-): number | undefined {
-  return slackAllowed(slack.grantHash, env) ? slack.grantExpiresAt : undefined;
+  return hash === CHANNEL_GRANT && loginConfigured(env);
 }
 
 export function slackEnvironment(

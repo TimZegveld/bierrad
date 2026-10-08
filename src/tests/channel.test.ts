@@ -83,22 +83,9 @@ test("channel errors become friendly Dutch messages without server details", asy
   );
 });
 
-test("session join routes accept only exact hex links and known login failures", async () => {
-  const { parseJoinRoute } = await import("../sessions/JoinClient");
-  assert.deepEqual(parseJoinRoute(`#/meedoen/${cap}`), { page: "join", capability: cap });
-  assert.deepEqual(parseJoinRoute("#/meedoen-login/busy"), { page: "failure", failure: "busy" });
-  for (const hash of [
-    "#/meedoen/aap-beer-dak-fiets-hoed",
-    `#/meedoen/${cap}/x`,
-    "#/meedoen-login/not_in_channel",
-    "#/meedoen",
-  ])
-    assert.equal(parseJoinRoute(hash), null, hash);
-});
-
 test("login forms send their Origin: strict-origin page policy, no noreferrer on the form", () => {
   // Under no-referrer browsers send "Origin: null" with a cross-origin form
-  // POST, and /auth/slack/member and /auth/slack/join refuse every login.
+  // POST, and /auth/slack/member refuses every login.
   const page = readFileSync("index.html", "utf8");
   assert.match(page, /<meta name="referrer" content="strict-origin" \/>/);
   assert.doesNotMatch(page, /content="no-referrer"/);

@@ -1,9 +1,7 @@
-import { reactionVariant, themeFor, themes } from "../../shared/variant";
+import { reactionVariant, themeFor } from "../../shared/variant";
 import type { CallOutcome } from "../channel/messages";
 import { createSession } from "../../src/domain/drawEngine";
 import { randomIndex } from "../../src/utils/random";
-import type { WheelVariant } from "../../shared/variant";
-import type { SlackReminderStatus } from "../../shared/protocol";
 import type { StoredSession } from "../session";
 import { RequestError } from "../session";
 import { cookieName, type SlackPerson, type SlackSource } from "./source";
@@ -34,8 +32,6 @@ export interface SlackJob {
   mentionIds?: (string | null)[];
   /** Koekrad only: per winner, the reactor whose nomination ticket won, or null. */
   sponsorIds?: (string | null)[];
-  /** Host-started sessions with reviews: the invitation under the winners. */
-  review?: { until: number; link: string };
   /** Koekrad rounds only: the round's validated word. */
   title?: string;
   status: "pending" | "posting" | "posted" | "failed" | "uncertain";
@@ -43,26 +39,6 @@ export interface SlackJob {
   attemptedAt?: number;
   retryAt?: number;
   postedMessageTs?: string;
-}
-/** Posted this long before a scheduled start; shorter plans post right away. */
-export const REMINDER_LEAD_MS = 120000;
-/** No reminder when less than this remains before the start. */
-export const REMINDER_MIN_LEAD_MS = 30000;
-/** Bounds thread messages a host can trigger by rescheduling. */
-export const MAX_REMINDER_POSTS = 5;
-export interface SlackReminder {
-  id: string;
-  startAt: string;
-  readyAt: number;
-  /**
-   * Raw spectator capability, verified against the stored hash. Kept only while
-   * a post is still possible and deleted as soon as the reminder settles.
-   */
-  capability?: string;
-  status: SlackReminderStatus;
-  attempts: number;
-  attemptedAt?: number;
-  retryAt?: number;
 }
 export interface SlackState {
   grantHash: string;
@@ -85,8 +61,6 @@ export interface SlackState {
   job?: SlackJob;
   /** Channel rounds only: the pending rewrite of the call message. */
   card?: CallCard;
-  reminder?: SlackReminder;
-  reminderPosts?: number;
   /** Started by a channel-bound Koffierad: no host, refreshes itself until the draw. */
   channelRound?: boolean;
   /** Private: the bot's own user, whose prefilled reaction never counts. */
@@ -223,9 +197,6 @@ export function resultBody(job: SlackJob) {
   const theme = themeFor(reactionVariant(job.source.reactionName), job.title);
   const heading = `${theme.icon} Het rad heeft gesproken!\n`;
   const ending = `${job.names.length === 1 ? "Jij mag" : "Jullie mogen"} ${theme.drink} halen!`;
-  const invitation = job.review
-    ? `\n⭐ Beoordeel de ${job.names.length === 1 ? "haler" : "halers"} tot ${clock.format(job.review.until)}: `
-    : "";
   const escape = (text: string) =>
     text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   // Only server-resolved identities become mentions. Names remain literal text.
@@ -245,11 +216,10 @@ export function resultBody(job: SlackJob) {
   // identities appear there as <@U…>; everything else is escaped.
   const text = `${escape(heading)}${job.names
     .map((name, index) => (ids[index] ? `<@${ids[index]}>` : escape(name)))
-    .join(" · ")}${escape(`\n${ending}`)}${credit}${escape(`${invitation}${job.review?.link ?? ""}`)}`;
+    .join(" · ")}${escape(`\n${ending}`)}${credit}`;
   const elements: (
     | { type: "text"; text: string }
     | { type: "user"; user_id: string }
-    | { type: "link"; url: string; text: string }
   )[] = [{ type: "text", text: heading }];
   job.names.forEach((name, index) => {
     if (index) elements.push({ type: "text", text: " · " });
@@ -266,12 +236,6 @@ export function resultBody(job: SlackJob) {
     if (id) elements.push(
       { type: "text", text: "\nMede mogelijk gemaakt door... " },
       { type: "user", user_id: id },
-    );
-  // The join link is server-built from FRONTEND_URL, never client text.
-  if (job.review)
-    elements.push(
-      { type: "text", text: invitation },
-      { type: "link", url: job.review.link, text: "Open de ronde" },
     );
   return {
     channel: job.source.channelId,
@@ -349,52 +313,3 @@ export const clock = new Intl.DateTimeFormat("nl-NL", {
   hour: "2-digit",
   minute: "2-digit",
 });
-/** Fixed text plus one server-built link; no names, mentions or client text. */
-export function reminderBody(
-  source: SlackSource,
-  variant: WheelVariant,
-  link: string,
-  startAt: string,
-  now: number,
-  /** With reviews: the session's join link, to watch or log in. */
-  join = false,
-) {
-  const theme = themes[variant];
-  const minutes = Math.max(1, Math.round((Date.parse(startAt) - now) / 60000));
-  const heading = `⏰ Over ${minutes} ${minutes === 1 ? "minuut" : "minuten"} (${clock.format(Date.parse(startAt))}) draait het ${theme.name}! ${theme.icon}
-${join ? "Kijk live mee, of log in om na afloop de halers te beoordelen: " : "Kijk live mee: "}`;
-  const label = join ? "Open de ronde" : "Open het rad";
-  const escape = (text: string) =>
-    text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  return {
-    channel: source.channelId,
-    thread_ts: source.parentMessageTs,
-    text: escape(`${heading}${link}`),
-    blocks: [
-      {
-        type: "rich_text",
-        elements: [
-          {
-            type: "rich_text_section",
-            elements: [
-              { type: "text", text: heading },
-              { type: "link", url: link, text: label },
-            ],
-          },
-        ],
-      },
-    ],
-    mrkdwn: false,
-    parse: "none",
-    link_names: false,
-    reply_broadcast: false,
-    unfurl_links: false,
-    unfurl_media: false,
-  };
-}
-export function postReminder(
-  api: SlackApiClient,
-  body: ReturnType<typeof reminderBody>,
-): Promise<PostOutcome> {
-  return postMessage(api, body.channel, body);
-}

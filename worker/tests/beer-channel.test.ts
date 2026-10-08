@@ -123,6 +123,18 @@ test("the own text becomes literal rich text: only emoji and bold, never mention
     { type: "text", text: " Prost", style: { bold: true } },
     { type: "text", text: " :bierrad_star_5:" },
   ]);
+  // Skin tones stay on their emoji, also in the notification text.
+  assert.deepEqual(introElements(":point_right::skin-tone-4: *Test* :point_left::skin-tone-4:"), [
+    { type: "emoji", name: "point_right", skin_tone: 4 },
+    { type: "text", text: " " },
+    { type: "text", text: "Test", style: { bold: true } },
+    { type: "text", text: " " },
+    { type: "emoji", name: "point_left", skin_tone: 4 },
+  ]);
+  assert.ok(
+    beerCallBody("C00000001", "https://app.example.test/#/bier/x", at("2026-10-07T13:45:00Z"), 1, now, ":wave::skin-tone-2: Hoi")
+      .text.startsWith(":wave::skin-tone-2: Hoi\n"),
+  );
 });
 
 test("the Bierrad call has the owner's fixed text, its own text on top and the round behind \"radje\"", () => {

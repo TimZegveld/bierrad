@@ -241,6 +241,15 @@ test("review texts turn emoji shortcodes into emoji, nothing else", () => {
     { type: "text", text: " top " },
     { type: "emoji", name: "-1" },
   ]);
+  // A skin tone right after a shortcode belongs to that emoji, as Slack writes it.
+  assert.deepEqual(bullet(":+1::skin-tone-4: top :wave::skin-tone-7: :skin-tone-2:"), [
+    { type: "emoji", name: "+1", skin_tone: 4 },
+    { type: "text", text: " top " },
+    { type: "emoji", name: "wave" },
+    { type: "emoji", name: "skin-tone-7" },
+    { type: "text", text: " " },
+    { type: "emoji", name: "skin-tone-2" },
+  ]);
   // Times, uppercase, spaces, markup and our own star emoji stay literal text.
   for (const text of ["om 12:30:00", ":Tim: of : x :", "<!here> :a b:", "::", ":bierrad_star_9:"])
     assert.deepEqual(bullet(text), [{ type: "text", text }]);

@@ -10,7 +10,7 @@ import { clock } from "../slack/state";
 
 type Element =
   | { type: "text"; text: string; style?: { bold: true; italic?: true } }
-  | { type: "emoji"; name: string }
+  | { type: "emoji"; name: string; skin_tone?: number }
   | { type: "link"; url: string; text: string }
   | { type: "user"; user_id: string }
   | RatingEmoji;
@@ -28,7 +28,7 @@ const fallback = (elements: Element[], names: string[] = []) => {
           : e.type === "user"
             ? names[name++]
             : e.type === "emoji"
-              ? `:${e.name}:`
+              ? `:${e.name}:${"skin_tone" in e && e.skin_tone ? `:skin-tone-${e.skin_tone}:` : ""}`
               : e.text,
       )
       .join(""),
@@ -134,9 +134,11 @@ export function callBody(
  * Slack-style emoji shortcodes, e.g. `:tim-koek:` or `:+1:`, never only digits
  * so times like `12:30:00` stay text. Unknown names simply show as text in
  * Slack. Our own `bierrad_` emoji stay text, so a review cannot fake stars.
+ * A directly following `:skin-tone-2:` to `:skin-tone-6:`, as Slack writes
+ * `:+1::skin-tone-4:`, becomes the skin tone of that emoji.
  */
 const shortcode =
-  /:(?!bierrad_)(?=[a-z0-9_.+-]*[a-z_.+-])([a-z0-9_.+-]{1,100}):/g;
+  /:(?!bierrad_)(?=[a-z0-9_.+-]*[a-z_.+-])([a-z0-9_.+-]{1,100}):(?::skin-tone-([2-6]):)?/g;
 /** Literal text elements with only shortcodes turned into emoji elements. */
 function withEmoji(text: string, bold = false): Element[] {
   const elements: Element[] = [];
@@ -151,7 +153,11 @@ function withEmoji(text: string, bold = false): Element[] {
   let last = 0;
   for (const match of text.matchAll(shortcode)) {
     push(text.slice(last, match.index));
-    elements.push({ type: "emoji", name: match[1] });
+    elements.push(
+      match[2]
+        ? { type: "emoji", name: match[1], skin_tone: Number(match[2]) }
+        : { type: "emoji", name: match[1] },
+    );
     last = match.index + match[0].length;
   }
   push(text.slice(last));

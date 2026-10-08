@@ -28,10 +28,14 @@ test("both review replies and channel cards use five emoji elements per rated wi
     { name: "Alice", mentionId: "U00000001", average: 3.7, count: 10, texts: [] },
     { name: "Bob", mentionId: null, average: 2, count: 1, texts: [":bierrad_star_9: <!channel>"] },
   ];
-  const reply = reviewBody("C00000001", "1234567890.123456", results);
-  const sections = reply.blocks[0].elements as { type: string; elements: Record<string, unknown>[] }[];
-  for (const [i, section] of sections.filter((s) => s.type === "rich_text_section").entries())
-    assert.deepEqual(section.elements.filter((e) => e.type === "emoji"), slackRating(results[i].average).elements);
+  // One reply per winner, so each haler can get their own reactions.
+  const replies = results.map((result) => reviewBody("C00000001", "1234567890.123456", result));
+  for (const [i, reply] of replies.entries()) {
+    const head = (reply.blocks[0].elements as { type: string; elements: Record<string, unknown>[] }[])[0];
+    assert.deepEqual(head.elements.filter((e) => e.type === "emoji"), slackRating(results[i].average).elements);
+  }
+  const reply = replies[0];
+  const sections = replies[1].blocks[0].elements as { type: string; elements: Record<string, unknown>[] }[];
   assert.deepEqual(sections.at(-1), {
     type: "rich_text_list",
     style: "bullet",

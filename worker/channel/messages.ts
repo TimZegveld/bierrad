@@ -410,58 +410,59 @@ function reviewText(text: string): Element[] {
   const elements = withEmoji(text);
   return elements.length ? elements : [{ type: "text", text: "" }];
 }
-/** The anonymous reviews of a round, as one reply in its thread. */
+/**
+ * The anonymous reviews of one winner, as its own reply in the round's thread,
+ * so people can react to each haler separately.
+ */
 export function reviewBody(
   channelId: string,
   threadTs: string,
-  results: {
+  result: {
     name: string;
     mentionId: string | null;
     average: number;
     count: number;
     texts: string[];
-  }[],
+  },
 ) {
   const sections: Record<string, unknown>[] = [];
   const plain: string[] = [];
-  results.forEach((result, index) => {
-    const display = slackRating(result.average);
-    const line: Element[] = [
-      { type: "text", text: `${index ? "\n" : ""}⭐ Reviews voor ` },
-      mention(result.name, result.mentionId),
-      { type: "text", text: "\n" },
-      ...display.elements,
-      { type: "text", text: "  " },
-      {
-        type: "text",
-        text: display.value,
-        style: { bold: true },
-      },
-      {
-        type: "text",
-        text: ` gemiddeld · ${result.count} ${result.count === 1 ? "beoordeling" : "beoordelingen"}`,
-      },
-    ];
-    sections.push({ type: "rich_text_section", elements: line });
-    // Slack notifies from the fallback text, so the frozen identity is a real
-    // mention there too; everything else is escaped.
-    const who = line[1];
-    plain.push(
-      `${escape(`${index ? "\n" : ""}⭐ Reviews voor `)}${who.type === "user" ? `<@${who.user_id}>` : escape(result.name)}${escape(`\n${display.text}  ${display.value} gemiddeld · ${result.count} ${result.count === 1 ? "beoordeling" : "beoordelingen"}`)}`,
-    );
-    // Anonymous texts as literal text, one bullet each: Slack would merge
-    // consecutive quotes into one.
-    if (result.texts.length)
-      sections.push({
-        type: "rich_text_list",
-        style: "bullet",
-        elements: result.texts.map((text) => ({
-          type: "rich_text_section",
-          elements: reviewText(text),
-        })),
-      });
-    for (const text of result.texts) plain.push(escape(`• ${text}`));
-  });
+  const display = slackRating(result.average);
+  const line: Element[] = [
+    { type: "text", text: "⭐ Reviews voor " },
+    mention(result.name, result.mentionId),
+    { type: "text", text: "\n" },
+    ...display.elements,
+    { type: "text", text: "  " },
+    {
+      type: "text",
+      text: display.value,
+      style: { bold: true },
+    },
+    {
+      type: "text",
+      text: ` gemiddeld · ${result.count} ${result.count === 1 ? "beoordeling" : "beoordelingen"}`,
+    },
+  ];
+  sections.push({ type: "rich_text_section", elements: line });
+  // Slack notifies from the fallback text, so the frozen identity is a real
+  // mention there too; everything else is escaped.
+  const who = line[1];
+  plain.push(
+    `${escape("⭐ Reviews voor ")}${who.type === "user" ? `<@${who.user_id}>` : escape(result.name)}${escape(`\n${display.text}  ${display.value} gemiddeld · ${result.count} ${result.count === 1 ? "beoordeling" : "beoordelingen"}`)}`,
+  );
+  // Anonymous texts as literal text, one bullet each: Slack would merge
+  // consecutive quotes into one.
+  if (result.texts.length)
+    sections.push({
+      type: "rich_text_list",
+      style: "bullet",
+      elements: result.texts.map((text) => ({
+        type: "rich_text_section",
+        elements: reviewText(text),
+      })),
+    });
+  for (const text of result.texts) plain.push(escape(`• ${text}`));
   return {
     channel: channelId,
     thread_ts: threadTs,

@@ -9,6 +9,8 @@ import {
   reviewDeadline,
   reviewBallot,
   settleReviewJob,
+  settleReviewPost,
+  type ReviewJob,
   submitReview,
 } from "../reviews";
 import { reviewBody, settledCallBody } from "../channel/messages";
@@ -131,6 +133,22 @@ test("one strict ballot per person; the last vote closes, keeps no voter and era
   assert.deepEqual(r.review!.job!.results, []);
 });
 
+test("each winner's reviews are their own reply, posted in turn", () => {
+  const result = (name: string) => ({ name, mentionId: null, average: 4, count: 1, texts: [`${name} top`] });
+  const job: ReviewJob = { results: [result("Sem"), result("Joris"), result("Fleur")], status: "posting", readyAt: 0, attempts: 2, attemptedAt: 5 };
+  // The first settles (even uncertain): its texts go, the next is due at once with fresh attempts.
+  settleReviewPost(job, "uncertain", 100);
+  assert.deepEqual(job, { results: [result("Joris"), result("Fleur")], status: "pending", readyAt: 100, attempts: 0 });
+  job.status = "posting";
+  settleReviewPost(job, "failed", 200);
+  assert.deepEqual(job.results.map((r) => r.name), ["Fleur"]);
+  assert.equal(job.status, "pending");
+  job.status = "posting";
+  settleReviewPost(job, "posted", 300);
+  assert.deepEqual(job.results, []);
+  assert.equal(job.status, "posted");
+});
+
 test("nobody voting posts nothing; nobody able to vote leaves the call alone", () => {
   let { r, end } = drawnRound(5);
   closeReview(r, end + 5 * 60000);
@@ -178,9 +196,7 @@ test("the call invites to review while open and shows five decimal stars after",
 });
 
 test("the review post quotes anonymous texts literally, in the thread only", () => {
-  const body = reviewBody("C00000001", "1234567890.123456", [
-    { name: "<@U00000002>", mentionId: "U00000001", average: 4.25, count: 2, texts: ["<!here> *vet* <https://evil.example|klik>"] },
-  ]);
+  const body = reviewBody("C00000001", "1234567890.123456", { name: "<@U00000002>", mentionId: "U00000001", average: 4.25, count: 2, texts: ["<!here> *vet* <https://evil.example|klik>"] });
   assert.equal(body.thread_ts, "1234567890.123456");
   assert.equal(body.reply_broadcast, false);
   assert.equal(body.parse, "none");
@@ -191,9 +207,7 @@ test("the review post quotes anonymous texts literally, in the thread only", () 
   assert.deepEqual(body.text.match(/<[^>]*>/g), ["<@U00000001>"]);
   assert.ok(body.text.includes("&lt;!here&gt;"));
   assert.ok(!body.text.includes("U00000002"));
-  const manual = reviewBody("C00000001", "1", [
-    { name: "<@U00000002>", mentionId: null, average: 3, count: 1, texts: [] },
-  ]);
+  const manual = reviewBody("C00000001", "1", { name: "<@U00000002>", mentionId: null, average: 3, count: 1, texts: [] });
   assert.ok(!/<[!@h]/.test(manual.text));
   assert.ok(manual.text.includes("&lt;@U00000002&gt;"));
   const blocks = body.blocks[0].elements as { type: string; elements: Record<string, unknown>[] }[];
@@ -209,16 +223,12 @@ test("the review post quotes anonymous texts literally, in the thread only", () 
     ],
   });
   // Every review is its own bullet, also in the fallback.
-  const two = reviewBody("C00000001", "1", [
-    { name: "Nick", mentionId: null, average: 3, count: 2, texts: ["Lekker", "Troebel"] },
-  ]);
+  const two = reviewBody("C00000001", "1", { name: "Nick", mentionId: null, average: 3, count: 2, texts: ["Lekker", "Troebel"] });
   const list = (two.blocks[0].elements as { elements?: unknown[] }[])[1];
   assert.equal(list.elements!.length, 2);
   assert.ok(two.text.endsWith("• Lekker\n• Troebel"));
   // Without texts there is no empty list.
-  const silent = reviewBody("C00000001", "1", [
-    { name: "Nick", mentionId: null, average: 3, count: 1, texts: [] },
-  ]);
+  const silent = reviewBody("C00000001", "1", { name: "Nick", mentionId: null, average: 3, count: 1, texts: [] });
   assert.equal((silent.blocks[0].elements as unknown[]).length, 1);
   assert.ok(!JSON.stringify(body).includes('"type":"link"'));
   assert.ok(!JSON.stringify(body).includes('"type":"broadcast"'));
@@ -227,9 +237,7 @@ test("the review post quotes anonymous texts literally, in the thread only", () 
 test("review texts turn emoji shortcodes into emoji, nothing else", () => {
   const bullet = (text: string) =>
     (
-      reviewBody("C00000001", "1", [
-        { name: "Nick", mentionId: null, average: 3, count: 1, texts: [text] },
-      ]).blocks[0].elements as { elements?: { elements: unknown[] }[] }[]
+      reviewBody("C00000001", "1", { name: "Nick", mentionId: null, average: 3, count: 1, texts: [text] }).blocks[0].elements as { elements?: { elements: unknown[] }[] }[]
     )[1].elements![0].elements;
   assert.deepEqual(bullet("Geen Krispy Kreme... :joeri-banger:"), [
     { type: "text", text: "Geen Krispy Kreme... " },

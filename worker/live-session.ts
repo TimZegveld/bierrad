@@ -39,6 +39,7 @@ import {
   openReview,
   reviewBallot,
   settleReviewJob,
+  settleReviewPost,
   submitReview,
 } from "./reviews";
 import type { ReviewBallot } from "../shared/reviews";
@@ -840,9 +841,10 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
     await this.ctx.storage.setAlarm(nextDeadline(latest));
   }
   /**
-   * Closes voting at its deadline, then posts the anonymous results once in
-   * the thread: claimed before I/O, never repeated when delivery is uncertain,
-   * retried at most once after a definite rejection.
+   * Closes voting at its deadline, then posts the anonymous results in the
+   * thread, one reply per winner. Each reply is claimed before I/O, never
+   * repeated when delivery is uncertain, retried at most once after a definite
+   * rejection.
    */
   private async processReview() {
     const record = this.read();
@@ -859,8 +861,9 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
     if (!job) return;
     if (job.status === "posting") {
       if (Date.now() >= job.attemptedAt! + 120000) {
-        settleReviewJob(job, "uncertain");
+        settleReviewPost(job, "uncertain", Date.now());
         this.save(record);
+        await this.ctx.storage.setAlarm(nextDeadline(record));
       }
       return;
     }
@@ -885,7 +888,7 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
     const result = await postMessage(
       new SlackApiClient(slackEnvironment(this.env, variant).SLACK_BOT_TOKEN!),
       source.channelId,
-      reviewBody(source.channelId, source.parentMessageTs, job.results),
+      reviewBody(source.channelId, source.parentMessageTs, job.results[0]),
     );
     const latest = this.read();
     const current = latest?.review?.job;
@@ -899,7 +902,7 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
     if (result.status === "failed" && current.attempts < 2) {
       current.status = "pending";
       current.readyAt = result.retryAt;
-    } else settleReviewJob(current, result.status);
+    } else settleReviewPost(current, result.status, Date.now());
     this.save(latest);
     await this.ctx.storage.setAlarm(nextDeadline(latest));
   }

@@ -48,6 +48,7 @@ export interface ReviewResult {
   texts: string[];
 }
 export interface ReviewJob {
+  /** Still to post, one reply per winner; the first is the current one. */
   results: ReviewResult[];
   status: "pending" | "posting" | "posted" | "failed" | "uncertain";
   readyAt: number;
@@ -239,6 +240,22 @@ export function closeReview(record: StoredSession, now: number): void {
 export function settleReviewJob(job: ReviewJob, status: ReviewJob["status"]) {
   job.status = status;
   if (status !== "pending" && status !== "posting") job.results = [];
+}
+/**
+ * Each winner gets their own reply, posted in turn: once the first settles,
+ * whatever its outcome, its texts are erased and the next is due at once.
+ */
+export function settleReviewPost(
+  job: ReviewJob,
+  status: "posted" | "failed" | "uncertain",
+  now: number,
+) {
+  job.results.shift();
+  if (!job.results.length) return settleReviewJob(job, status);
+  job.status = "pending";
+  job.readyAt = now;
+  job.attempts = 0;
+  delete job.attemptedAt;
 }
 export function reviewProgress(
   record: StoredSession,

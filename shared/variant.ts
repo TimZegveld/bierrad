@@ -122,11 +122,11 @@ export const themes: Record<WheelVariant, WheelTheme> = {
     question: "Wie haalt de volgende koffie?",
     crew: "koffieploeg",
     brigade: "koffiebrigade",
-    footer: "Met liefde gemaakt voor de koffiepauze.",
+    footer: "Met liefde gemaakt voor de koffieliefhebbers.",
     finale: "DE KOFFIEBRIGADE VAN DEZE RONDE",
     resultOne: "mag de volgende koffie halen.",
     resultMany: "halen de volgende koffie.",
-    ending: "De koffiepauze kan beginnen. Maak ons trots.",
+    ending: "Het koffieapparaat wacht op je. Brouw ons trots.",
     wheelColors: [
       "#d7a575",
       "#ebc9a6",

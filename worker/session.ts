@@ -37,6 +37,11 @@ export interface StoredSession {
   variant?: WheelVariant;
   /** Koekrad rounds only: the validated word from `/koekrad <titel>`; display only. */
   title?: string;
+  /**
+   * Bierrad rounds only: the own text of the `/bierrad`, for the call in Slack;
+   * never in a DTO, log or error.
+   */
+  intro?: string;
   session: BeerWheelSession;
   hostHash: string;
   spectatorHash: string;
@@ -169,6 +174,22 @@ export function channelRefreshAt(record: StoredSession): number | undefined {
     ? at
     : undefined;
 }
+/**
+ * How long a channel round waits before reading its reactions again. A
+ * Bierrad round may be planned days ahead: it reads less often while the
+ * start is far away, and every minute in the last quarter of an hour.
+ */
+export function refreshInterval(record: StoredSession, now: number): number {
+  const start = record.scheduledDraw
+    ? Date.parse(record.scheduledDraw.startAt)
+    : now;
+  const left = start - now;
+  return left > 2 * 60 * 60 * 1000
+    ? 15 * 60 * 1000
+    : left > 15 * 60 * 1000
+      ? 5 * 60 * 1000
+      : 60000;
+}
 export function advance(record: StoredSession, now: number): boolean {
   if (now >= record.expiresAt) return false;
   let s = record.session;
@@ -204,6 +225,10 @@ export function nextDeadline(record: StoredSession): number {
   if (slack?.card?.status === "pending") times.push(slack.card.readyAt);
   if (slack?.card?.status === "updating")
     times.push(slack.card.attemptedAt! + 120000);
+  if (slack?.reminder?.status === "pending") times.push(slack.reminder.readyAt);
+  if (slack?.reminder?.status === "posting")
+    times.push(slack.reminder.attemptedAt! + 120000);
+
   if (draw && s.state === "countdown") times.push(Date.parse(draw.startAt));
   if (draw && ["countdown", "spinning"].includes(s.state))
     times.push(

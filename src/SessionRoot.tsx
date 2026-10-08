@@ -22,7 +22,7 @@ import {
   parseLiveRoute,
 } from "./sessions/liveNavigation";
 import { parseChannelRoute } from "./sessions/ChannelClient";
-import { isChannelVariant } from "../shared/channel";
+import { channelApp, channelApps, isChannelVariant } from "../shared/channel";
 import {
   ChannelBindPage,
   ChannelMemberFailurePage,
@@ -47,16 +47,17 @@ export function SessionRoot() {
   const channel = parseChannelRoute(hash);
   if (channel)
     return (
-      <VariantContext.Provider value="coffee">
+      <VariantContext.Provider value={channel.app === "beer" ? "beer" : "coffee"}>
         {channel.page === "bind" ? (
-          <ChannelBindPage key={hash} failure={channel.failure} />
+          <ChannelBindPage key={hash} app={channel.app} failure={channel.failure} />
         ) : channel.page === "memberFailure" ? (
-          <ChannelMemberFailurePage key={hash} failure={channel.failure} />
+          <ChannelMemberFailurePage key={hash} app={channel.app} failure={channel.failure} />
         ) : channel.page === "view" ? (
-          <ChannelViewPage key={hash} capability={channel.capability} />
+          <ChannelViewPage key={hash} app={channel.app} capability={channel.capability} />
         ) : (
           <ChannelWheelPage
             key={hash}
+            app={channel.app}
             capability={channel.capability}
             requestCapability={channel.requestCapability}
           />
@@ -215,7 +216,10 @@ function LiveBar({
         </button>
       )}
       {!live && apiUrl && isChannelVariant(theme.variant) && (
-        <a className="button-link" href="#/koffie-koppelen">
+        <a
+          className="button-link"
+          href={`#/${channelApps[channelApp(theme.variant)].route}-koppelen`}
+        >
           Koppel aan een Slack-kanaal {theme.icon}
         </a>
       )}

@@ -8,7 +8,16 @@
     "bot_user": {
       "display_name": "Bierrad",
       "always_online": false
-    }
+    },
+    "slash_commands": [
+      {
+        "command": "/bierrad",
+        "url": "https://bierrad-live.timzegveld.workers.dev/slack/bier-commands",
+        "description": "Start een bierronde (standaard vandaag om 15.45)",
+        "usage_hint": "[dag] [tijd] [aantal] [eigen tekst]",
+        "should_escape": false
+      }
+    ]
   },
   "oauth_config": {
     "redirect_urls": [
@@ -20,8 +29,10 @@
       ],
       "bot": [
         "reactions:read",
+        "reactions:write",
         "users:read",
-        "chat:write"
+        "chat:write",
+        "commands"
       ]
     }
   },

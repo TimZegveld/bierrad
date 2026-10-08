@@ -1,18 +1,21 @@
 /**
- * Local demo of a channel coffee round with a fake Slack, for looking at the
- * flow end to end: the Slack call, Sign in with Slack, a 10 s countdown and
- * the review ballot. Development only: the real worker bundle runs in
- * Miniflare, in memory, on 127.0.0.1, with synthetic credentials and six
- * made-up colleagues. Nothing here reaches Slack, Cloudflare or production.
+ * Local demo of a channel round with a fake Slack, for looking at the flow
+ * end to end: the Slack call, Sign in with Slack, a 10 s countdown and the
+ * review ballot. Development only: the real worker bundle runs in Miniflare,
+ * in memory, on 127.0.0.1, with synthetic credentials and six made-up
+ * colleagues. Nothing here reaches Slack, Cloudflare or production.
  *
- *   npm run demo   →   open http://127.0.0.1:8787/__demo/
+ *   npm run demo        →   a Koffierad round (`/koffierad 15`)
+ *   npm run demo:bier   →   a Bierrad round (`/bierrad` with an own text)
+ *   then open http://127.0.0.1:8787/__demo/
  */
 import { spawn } from "node:child_process";
 import { createHmac } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { wordLocator } from "../worker/auth";
-import type { ChannelStatus } from "../shared/channel";
+import { channelApps, type ChannelStatus } from "../shared/channel";
+import { amsterdamInput } from "../src/utils/schedule";
 
 const API = "http://127.0.0.1:8787";
 const FRONTEND = "http://127.0.0.1:5173";
@@ -23,6 +26,11 @@ const BOT = "UBOT00001";
 const ADMIN = "U0DEMO099";
 const COUNTDOWN_MS = 10000;
 const SIGNING_SECRET = "synthetic-signing-secret";
+const BEER_SIGNING_SECRET = "synthetic-bierrad-signing-secret";
+/** `npm run demo:bier` shows the Bierrad app's `/bierrad`; otherwise the Koffierad. */
+const APP = process.argv.includes("bier") ? ("beer" as const) : ("coffee" as const);
+const OWN = channelApps[APP];
+const ROUTE = OWN.route;
 const PEOPLE: Record<string, string> = {
   U0DEMO001: "Anouk",
   U0DEMO002: "Bram",
@@ -31,8 +39,14 @@ const PEOPLE: Record<string, string> = {
   U0DEMO005: "Lotte",
   U0DEMO006: "Sem",
 };
-const NAMES: Record<string, string> = { ...PEOPLE, [ADMIN]: "Demo-beheerder", [BOT]: "Koffierad" };
-const REVIEWS = [
+const NAMES: Record<string, string> = { ...PEOPLE, [ADMIN]: "Demo-beheerder", [BOT]: OWN.name };
+const REVIEWS = APP === "beer" ? [
+  "Koud, op tijd en precies genoeg.",
+  "Speciaalbiertjes erbij, wat een held.",
+  "Bonnetje kwijt, verder top.",
+  "",
+  "Proost! 🍻",
+] : [
   "Perfecte crema, net als in Napels.",
   "Melk was op, maar de glimlach maakte veel goed.",
   "Snel, heet en precies goed.",
@@ -77,7 +91,14 @@ export class DemoSession extends LiveSession {
     this.broadcast(record);
   }
   async demoStartAt(startAt) {
-    // A real round refreshes the ☕ reactions for minutes; the demo has one chance.
+    // A Bierrad round's thread reminder comes two minutes ahead; the demo shows it now.
+    const planned = this.read();
+    if (planned?.slack?.reminder?.status === "pending") {
+      planned.slack.reminder.readyAt = Date.now() - 1;
+      this.save(planned);
+      await this.alarm();
+    }
+    // A real round refreshes the reactions for minutes; the demo has one chance.
     const before = this.read();
     if (before?.slack?.source) {
       delete before.slack.nextImportAt;
@@ -276,6 +297,10 @@ const mf = new Miniflare(
           COFFEE_SLACK_CLIENT_ID: CLIENT_ID,
           COFFEE_SLACK_CLIENT_SECRET: "synthetic-coffee-client-secret",
           COFFEE_SLACK_SIGNING_SECRET: SIGNING_SECRET,
+          SLACK_BOT_TOKEN: "synthetic-beer-credential",
+          SLACK_CLIENT_ID: CLIENT_ID,
+          SLACK_CLIENT_SECRET: "synthetic-beer-client-secret",
+          SLACK_SIGNING_SECRET: BEER_SIGNING_SECRET,
         },
         ratelimits: {
           CREATION_LIMIT: { namespace_id: "90", simple: { limit: 1000, period: 60 } },
@@ -344,20 +369,28 @@ async function startSoon() {
   await current.session.demoStartAt(startAt);
   log("het rad draait over 10 seconden");
 }
-/** Rounds start only from Slack: a signed fake `/koffierad 15`, as Slack would send it. */
+/**
+ * Rounds start only from Slack: a signed fake `/koffierad 15`, or a
+ * `/bierrad` a quarter of an hour from now with an own text, as Slack would send it.
+ */
 async function requestRound() {
   autoCountdown = true;
+  const beer = APP === "beer";
+  const time = amsterdamInput(Date.now() + 16 * 60000).slice(11).replace(":", ".");
+  const text = beer
+    ? `${time} 🇩🇪 De Lederhosen zijn weer opgeborgen… hoog tijd voor de *Westlandse vrijdagtraditie die wél iedere week doorgaat.* :beers:`
+    : "15";
   const body = new URLSearchParams({
-    command: "/koffierad",
-    text: "15",
+    command: beer ? "/bierrad" : "/koffierad",
+    text,
     user_id: ADMIN,
     team_id: TEAM,
     channel_id: CHANNEL,
-    channel_name: "koffie-demo",
+    channel_name: beer ? "bier-demo" : "koffie-demo",
   }).toString();
   const at = String(Math.floor(Date.now() / 1000));
-  const signature = createHmac("sha256", SIGNING_SECRET).update(`v0:${at}:${body}`).digest("hex");
-  const response = await go("/slack/commands", {
+  const signature = createHmac("sha256", beer ? BEER_SIGNING_SECRET : SIGNING_SECRET).update(`v0:${at}:${body}`).digest("hex");
+  const response = await go(beer ? "/slack/bier-commands" : "/slack/commands", {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -378,7 +411,7 @@ async function requestRound() {
     })();
     throw new Error(text ?? (reply || String(response.status)));
   }
-  log("/koffierad 15 getypt; de oproep staat in het nep-Slack-kanaal");
+  log(`${beer ? `/bierrad ${time} …` : "/koffierad 15"} getypt; de oproep staat in het nep-Slack-kanaal`);
 }
 /** Everyone but you (and the haler, whom the server refuses) votes. */
 async function othersVote() {
@@ -389,7 +422,7 @@ async function othersVote() {
       headers: { Origin: FRONTEND, "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ capability: requester }).toString(),
     });
-    const personal = /#\/koffie\/([a-f0-9]{32}\.[a-f0-9]{64})$/.exec(await finishLogin(start, id))?.[1];
+    const personal = new RegExp(`#/${ROUTE}/([a-f0-9]{32}\\.[a-f0-9]{64})$`).exec(await finishLogin(start, id))?.[1];
     if (!personal) continue;
     const ballot = (await channel(personal)).member?.ballot;
     if (ballot && !ballot.submitted) {
@@ -456,12 +489,12 @@ a.person{display:flex;gap:12px;align-items:center;padding:10px 12px;border:1px s
 a.person:hover{border-color:#611f69;background:#f8f2f9}.avatar{width:32px;height:32px;border-radius:6px;background:#611f69;color:#fff;display:grid;place-items:center}
 .cancel{display:block;margin-top:16px;color:#666;font-size:14px}</style></head><body><main>
 <div class="demo">🧪 Demo: dit is geen echte Slack. Kies als wie je inlogt.</div>
-<h1>Inloggen bij Demo-werkplek</h1><p>Koffierad wil weten wie je bent.</p>
+<h1>Inloggen bij Demo-werkplek</h1><p>${OWN.name} wil weten wie je bent.</p>
 ${people.map((p) => `<a class="person" href="${esc(p.href)}"><span class="avatar">${esc(p.name[0])}</span>${esc(p.name)}</a>`).join("")}
 <a class="cancel" href="${esc(cancel)}">Annuleren</a></main></body></html>`;
 }
 
-const panel = `<!doctype html><html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Koffierad-demo</title>
+const panel = `<!doctype html><html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${OWN.name}-demo</title>
 <style>
 :root{--bg:#f6f1ea;--card:#fff;--ink:#1d1c1d;--muted:#616061;--line:#e3ded6;--accent:#7b4a2a}
 *{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--ink)}
@@ -479,13 +512,13 @@ section h2{margin:0;font-size:15px;padding:10px 14px;border-bottom:1px solid var
 .controls button:hover{border-color:var(--accent)}.status{font-size:14px;line-height:1.5;padding:0 14px 14px}.status code{background:#f1ece5;padding:1px 4px;border-radius:4px}
 ol{margin:0;padding:14px 14px 14px 32px;font-size:14px;line-height:1.6}#note{min-height:1.4em;color:var(--accent);font-size:14px}
 </style></head><body>
-<header><h1>☕ Koffierad-demo met nep-Slack</h1><p>Lokaal en in-memory: echte worker, nep-Slack, zes verzonnen collega's. Herstart wist alles.</p>
+<header><h1>${OWN.icon} ${OWN.name}-demo met nep-Slack</h1><p>Lokaal en in-memory: echte worker, nep-Slack, zes verzonnen collega's. Herstart wist alles.</p>
 <p id="origin-bug" hidden style="background:#fff3c4;color:#5c4400;padding:6px 10px;border-radius:6px">⚠️ Bekende bug, in de demo opgevangen: de browser stuurt bij <b>Inloggen met Slack</b> <code>Origin: null</code> mee (door het no-referrer-beleid), waardoor de echte worker de login weigert.</p></header>
 <div class="grid">
-<section><h2># koffie-demo</h2><div id="channel"><p class="empty">Laden…</p></div></section>
+<section><h2># ${APP === "beer" ? "bier" : "koffie"}-demo</h2><div id="channel"><p class="empty">Laden…</p></div></section>
 <div style="display:grid;gap:16px;align-content:start">
 <section><h2>Zo loop je de flow door</h2><ol>
-<li>Klik in de oproep links op <b>Open de ronde</b> (de Slack-link).</li>
+<li>Klik in de oproep links op <b>${APP === "beer" ? "radje" : "Open de ronde"}</b> (de Slack-link).</li>
 <li>Kies <b>Inloggen met Slack</b> en log in als een van de zes.</li>
 <li>Na inloggen telt het rad <b>10 seconden</b> af en draait.</li>
 <li>Stemmen opent 1 minuut na de finale (of klik <b>Open stemmen nu</b>).</li>
@@ -496,7 +529,7 @@ ol{margin:0;padding:14px 14px 14px 32px;font-size:14px;line-height:1.6}#note{min
 <button data-action="open">⭐ Open stemmen nu (sla de minuut over)</button>
 <button data-action="others">🗳️ Laat de andere deelnemers stemmen</button>
 <button data-action="close">🔒 Sluit stemmen nu</button>
-<button data-action="round">☕ Nieuwe koffieronde (15 min)</button>
+<button data-action="round">${APP === "beer" ? "🍻 Nieuwe bierronde (over 15 min)" : "☕ Nieuwe koffieronde (15 min)"}</button>
 <div id="note" role="status"></div></div><div class="status" id="status"></div></section>
 </div></div>
 <script>
@@ -507,7 +540,7 @@ function inline(e) {
   if (e.type === "text") { let t = esc(e.text); if (e.style && e.style.bold) t = "<b>" + t + "</b>"; if (e.style && e.style.italic) t = "<i>" + t + "</i>"; return t; }
   if (e.type === "link") return '<a href="' + esc(e.url) + '" target="_blank" rel="noopener">' + esc(e.text || e.url) + "</a>";
   if (e.type === "user") return "<b>@" + esc(names[e.user_id] || e.user_id) + "</b>";
-  if (e.type === "emoji") return ":" + esc(e.name) + ":";
+  if (e.type === "emoji") return ({ beers: "🍻", coffee: "☕", "spin-the-wheel": "🎡", spinner: "🌀", star: "⭐" })[e.name] || ":" + esc(e.name) + ":";
   if (e.type === "mrkdwn" || e.type === "plain_text") return esc(e.text);
   if (e.type === "rich_text_quote") return "<blockquote>" + (e.elements || []).map(inline).join("") + "</blockquote>";
   if (e.type === "rich_text_list") return (e.border ? "<blockquote>" : "") + "<ul>" + (e.elements || []).map((s) => "<li>" + (s.elements || []).map(inline).join("") + "</li>").join("") + "</ul>" + (e.border ? "</blockquote>" : "");
@@ -515,10 +548,10 @@ function inline(e) {
     (e.text ? inline(e.text) : "") + (e.fields || []).map(inline).join("\\n");
 }
 function render(m) {
-  const who = m.thread || !m.blocks ? "Koffierad" : "Koffierad";
+  const who = ${JSON.stringify(OWN.name)};
   const body = m.blocks && m.blocks.length ? m.blocks.map(inline).join("\\n").replace(/\\n+$/, "") : esc(m.text);
-  const reaction = m.reactions ? '<div><span class="reaction">' + (m.reactions.name === "coffee" ? "☕" : m.reactions.name === "droplet" ? "💧" : ":" + esc(m.reactions.name) + ":") + " " + m.reactions.users.length + "</span></div>" : "";
-  return '<div class="msg"><div class="avatar">☕</div><div><span class="who">' + who + '</span><span class="when">APP</span>' +
+  const reaction = m.reactions ? '<div><span class="reaction">' + (m.reactions.name === "coffee" ? "☕" : m.reactions.name === "droplet" ? "💧" : m.reactions.name === "beers" ? "🍻" : ":" + esc(m.reactions.name) + ":") + " " + m.reactions.users.length + "</span></div>" : "";
+  return '<div class="msg"><div class="avatar">${OWN.icon}</div><div><span class="who">' + who + '</span><span class="when">APP</span>' +
     '<div class="body">' + body + (m.edited ? ' <span class="edited">(bewerkt)</span>' : "") + "</div>" + reaction + "</div></div>";
 }
 const time = (t) => t ? new Date(t).toLocaleTimeString("nl-NL") : "–";
@@ -551,9 +584,10 @@ setInterval(refresh, 1500);
 </script></body></html>`;
 
 await mf.ready;
-// Bind the channel as the demo admin, then post the first coffee call.
-const bind = await go(`/auth/slack/channel/${CHANNEL}`);
-const bound = /#\/koffie-beheer\/([a-f0-9.]+)\/([a-f0-9.]+)$/.exec(await finishLogin(bind, ADMIN));
+// Bind the channel as the demo admin, then post the first call.
+const bind = await go(`/auth/slack/${APP === "beer" ? "beer-channel" : "channel"}/${CHANNEL}`);
+const bound = new RegExp(`#/${ROUTE}-beheer/([a-f0-9.]+)/([a-f0-9.]+)$`).exec(await finishLogin(bind, ADMIN));
+
 if (!bound) throw new Error("Koppelen van het demokanaal mislukte.");
 [, admin, requester] = bound;
 await requestRound();

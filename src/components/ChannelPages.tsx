@@ -6,9 +6,13 @@ import {
   type ReactNode,
 } from "react";
 import {
+  channelApps,
+  DEFAULT_BEER_WINNERS,
+  MAX_BEER_WINNERS,
   MAX_ROUND_MINUTES,
   roundCopy,
   parseChannelInput,
+  type ChannelApp,
   type ChannelCommand,
   type ChannelRound,
   type ChannelStatus,
@@ -47,6 +51,65 @@ const clock = new Intl.DateTimeFormat("nl-NL", {
   hour: "2-digit",
   minute: "2-digit",
 });
+const dayOf = new Intl.DateTimeFormat("nl-NL", {
+  timeZone: "Europe/Amsterdam",
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+});
+const dayKey = (at: number) =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Amsterdam" }).format(at);
+/** "om 15:45" today; a Bierrad round planned for another day names that day. */
+function startLabel(startAt: number) {
+  return dayKey(startAt) === dayKey(Date.now())
+    ? `om ${clock.format(startAt)}`
+    : `${dayOf.format(startAt)} om ${clock.format(startAt)}`;
+}
+/** What each app's channel pages tell people to type; display only. */
+const appCopy: Record<
+  ChannelApp,
+  { idleTitle: string; again: string; idle: ReactNode; viewIdle: ReactNode }
+> = {
+  coffee: {
+    idleTitle: "Tijd voor koffie, water of koek?",
+    again: "Typ /koffierad, /waterrad of /koekrad in het kanaal voor een nieuwe ronde.",
+    idle: (
+      <>
+        Typ <code>/koffierad</code>, <code>/waterrad</code> of{" "}
+        <code>/koekrad</code> in het Slack-kanaal, bijvoorbeeld{" "}
+        <code>/waterrad 10</code> voor tien minuten of{" "}
+        <code>/koekrad taart 10</code> voor een taartronde. Wie op ☕, 💧 of
+        🍪 onder de oproep klikt, doet mee. Na de wachttijd draait het rad
+        hier vanzelf en kiest het één haler.
+      </>
+    ),
+    viewIdle: (
+      <>
+        Typ <code>/koffierad</code>, <code>/waterrad</code> of{" "}
+        <code>/koekrad</code> in het Slack-kanaal. Zodra er een ronde is, draait het rad hier vanzelf.
+      </>
+    ),
+  },
+  beer: {
+    idleTitle: "Tijd voor de bierronde?",
+    again: "Typ /bierrad in het kanaal voor een nieuwe bierronde.",
+    idle: (
+      <>
+        Typ <code>/bierrad</code> in het Slack-kanaal: dan draait het rad
+        vandaag om 15:45. Of kies zelf, bijvoorbeeld <code>/bierrad 16.00</code>{" "}
+        of <code>/bierrad vrijdag 15.45 3</code> voor drie halers, en zet er
+        gerust een eigen tekst achter. Wie op 🍻 onder de oproep klikt, doet
+        mee. Op de gekozen tijd draait het rad hier vanzelf.
+      </>
+    ),
+    viewIdle: (
+      <>
+        Typ <code>/bierrad</code> in het Slack-kanaal. Zodra er een bierronde
+        is, draait het rad hier vanzelf.
+      </>
+    ),
+  },
+};
 /** The name arrives with the first slash command; until then, no name. */
 function channelTitle(variant: ChannelVariant, name?: string, word?: string) {
   const { icon, name: wheel } = themeFor(variant, word);
@@ -82,45 +145,57 @@ function roundLabel(variant: ChannelVariant, word?: string) {
   const round = roundCopy(variant, word).round;
   return `${round[0].toUpperCase()}${round.slice(1)}`;
 }
-const bindFailures: Record<ChannelBindFailure, string> = {
-  denied: "Inloggen bij Slack is geannuleerd.",
-  forbidden:
-    "Alleen volwaardige leden van de workspace kunnen een Koffierad koppelen. Gasten en externe gebruikers kunnen wel meedoen.",
-  expired:
-    "Het inloggen duurde te lang of is in een ander tabblad gestart. Probeer opnieuw.",
-  unavailable: "Slack is nu niet bereikbaar of het Koffierad is nog niet ingesteld.",
-  busy: "Even rustig aan. Probeer over een minuut opnieuw.",
-  not_in_channel:
-    "Het Koffierad kon niet in dit kanaal posten. Nodig eerst de bot uit met /invite @Koffierad en probeer opnieuw.",
-};
+function bindFailure(failure: ChannelBindFailure, app: ChannelApp): string {
+  const { name, bot } = channelApps[app];
+  return {
+    denied: "Inloggen bij Slack is geannuleerd.",
+    forbidden: `Alleen volwaardige leden van de workspace kunnen een ${name} koppelen. Gasten en externe gebruikers kunnen wel meedoen.`,
+    expired:
+      "Het inloggen duurde te lang of is in een ander tabblad gestart. Probeer opnieuw.",
+    unavailable: `Slack is nu niet bereikbaar of het ${name} is nog niet ingesteld.`,
+    busy: "Even rustig aan. Probeer over een minuut opnieuw.",
+    not_in_channel: `Het ${name} kon niet in dit kanaal posten. Nodig eerst de bot uit met /invite ${bot} en probeer opnieuw.`,
+  }[failure];
+}
+/** The theme a page of an app shows before it knows the latest round. */
+const idleVariant = (app: ChannelApp): ChannelVariant =>
+  app === "beer" ? "beer" : "coffee";
 
-/** Bind a Koffierad to a Slack channel: Sign in with Slack, then a test post. */
-export function ChannelBindPage({ failure }: { failure?: ChannelBindFailure }) {
+/** Bind a wheel to a Slack channel: Sign in with Slack, then a test post. */
+export function ChannelBindPage({
+  app = "coffee",
+  failure,
+}: {
+  app?: ChannelApp;
+  failure?: ChannelBindFailure;
+}) {
   const api = configuredApiUrl();
   const [input, setInput] = useState("");
   const channel = parseChannelInput(input);
+  const { name, icon, bot, local } = channelApps[app];
+  const beer = app === "beer";
   return (
-    <ChannelTheme variant="coffee" title="Koffierad koppelen">
+    <ChannelTheme variant={idleVariant(app)} title={`${name} koppelen`}>
       <div className="unavailable channel-page">
-        <h1>☕💧🍪 Koffierad aan een kanaal koppelen</h1>
+        <h1>{beer ? "🍻" : "☕💧🍪"} {name} aan een kanaal koppelen</h1>
         <ol className="channel-steps">
           <li>
-            Nodig de Koffierad-bot uit in het kanaal: typ daar{" "}
-            <code>/invite @Koffierad</code>.
+            Nodig de {name}-bot uit in het kanaal: typ daar{" "}
+            <code>/invite {bot}</code>.
           </li>
           <li>
             Kopieer de link van het kanaal (rechtsklik op de kanaalnaam →{" "}
             <em>Kopiëren</em> → <em>Link kopiëren</em>) en plak hem hieronder.
           </li>
-          <li>Log in met Slack. Het Koffierad plaatst dan een bevestiging in het kanaal.</li>
+          <li>Log in met Slack. Het {name} plaatst dan een bevestiging in het kanaal.</li>
         </ol>
-        {failure && <p role="alert">{bindFailures[failure]}</p>}
+        {failure && <p role="alert">{bindFailure(failure, app)}</p>}
         {api ? (
           <form
             className="channel-form"
             onSubmit={(event) => {
               event.preventDefault();
-              if (channel) location.assign(channelBindUrl(api, channel));
+              if (channel) location.assign(channelBindUrl(api, app, channel));
             }}
           >
             <label htmlFor="channel-link">Kanaallink</label>
@@ -136,20 +211,29 @@ export function ChannelBindPage({ failure }: { failure?: ChannelBindFailure }) {
               <small role="status">Dit lijkt geen link naar een Slack-kanaal.</small>
             )}
             <button className="primary" type="submit" disabled={!channel}>
-              Log in en koppel ☕
+              Log in en koppel {icon}
             </button>
           </form>
         ) : (
           <p>Koppelen is hier nog niet ingesteld.</p>
         )}
-        <p className="helper">
-          Iedere afdeling kan een eigen kanaal koppelen. Wie <code>/koffierad</code>,{" "}
-          <code>/waterrad</code> of <code>/koekrad</code> typt in het kanaal,
-          start een koffie-, water- of koekronde.
-        </p>
-        <RoundExplainer />
+        {beer ? (
+          <p className="helper">
+            Wie daarna <code>/bierrad</code> typt in het kanaal, start een
+            bierronde: standaard vandaag om 15:45 met twee halers.
+          </p>
+        ) : (
+          <>
+            <p className="helper">
+              Iedere afdeling kan een eigen kanaal koppelen. Wie <code>/koffierad</code>,{" "}
+              <code>/waterrad</code> of <code>/koekrad</code> typt in het kanaal,
+              start een koffie-, water- of koekronde.
+            </p>
+            <RoundExplainer />
+          </>
+        )}
         <p>
-          <a href="#/coffee">Liever handmatig draaien</a>
+          <a href={local}>Liever handmatig draaien</a>
         </p>
       </div>
     </ChannelTheme>
@@ -167,14 +251,16 @@ const memberFailures: Record<MemberLoginFailure, string> = {
 };
 /** Where a failed personal login lands; it has no channel link to go back to. */
 export function ChannelMemberFailurePage({
+  app = "coffee",
   failure,
 }: {
+  app?: ChannelApp;
   failure: MemberLoginFailure;
 }) {
   return (
-    <ChannelTheme variant="coffee" title="Inloggen mislukt">
+    <ChannelTheme variant={idleVariant(app)} title="Inloggen mislukt">
       <div className="unavailable channel-page">
-        <h1>☕ Inloggen lukte niet</h1>
+        <h1>{channelApps[app].icon} Inloggen lukte niet</h1>
         <p role="alert">{memberFailures[failure]}</p>
         <p>Open de ronde opnieuw via de oproep in Slack en probeer het nog eens.</p>
       </div>
@@ -187,12 +273,15 @@ export function ChannelMemberFailurePage({
  * binding. Rounds start in Slack with a slash command, not here.
  */
 export function ChannelWheelPage({
+  app = "coffee",
   capability,
   requestCapability,
 }: {
+  app?: ChannelApp;
   capability: string;
   requestCapability?: string;
 }) {
+  const own = channelApps[app];
   const api = configuredApiUrl();
   const [status, setStatus] = useState<ChannelStatus>();
   const [pending, setPending] = useState(false);
@@ -265,7 +354,7 @@ export function ChannelWheelPage({
       const result = await run(command);
       if (result?.type === "rotated")
         location.replace(
-          `#/koffie-beheer/${capability}/${result.requestCapability}`,
+          `#/${own.route}-beheer/${capability}/${result.requestCapability}`,
         );
       if (done) setNotice(done);
     } catch (error) {
@@ -276,12 +365,12 @@ export function ChannelWheelPage({
   }
   if (!api || gone)
     return (
-      <ChannelTheme variant={status?.variant ?? "coffee"}>
+      <ChannelTheme variant={status?.variant ?? idleVariant(app)}>
         <div className="unavailable channel-page">
           <h1>
             {gone === "loggedOut"
-              ? "☕ Je bent uitgelogd."
-              : "☕ Dit Koffierad is niet beschikbaar."}
+              ? `${own.icon} Je bent uitgelogd.`
+              : `${own.icon} Dit ${own.name} is niet beschikbaar.`}
           </h1>
           <p>
             {gone === "loggedOut"
@@ -290,19 +379,19 @@ export function ChannelWheelPage({
                 ? "De koppeling is opgeheven of deze link is vervangen. Vraag de beheerder van het kanaal om de nieuwe link."
                 : "Live kanaalrondes zijn hier nog niet ingesteld."}
           </p>
-          <a href="#/coffee">Open een lokaal Koffierad</a>
+          <a href={own.local}>Open een lokaal {own.name}</a>
         </div>
       </ChannelTheme>
     );
   if (!status)
     return (
-      <ChannelTheme variant="coffee">
+      <ChannelTheme variant={idleVariant(app)}>
         <div className="unavailable channel-page">
           <p className="notice">{notice || "Het rad wordt gezet…"}</p>
         </div>
       </ChannelTheme>
     );
-  const variant = status.round?.variant ?? status.variant ?? "coffee";
+  const variant = status.round?.variant ?? status.variant ?? idleVariant(app);
   const word = status.round?.title;
   const reviews = status.reviews ?? DEFAULT_REVIEW_SETTINGS;
   const member = status.role === "member";
@@ -325,7 +414,7 @@ export function ChannelWheelPage({
       {ballot?.submitted && <ReviewThanks closesAt={ballot.closesAt} />}
       {ballot && !ballot.submitted && later === ballot.drawId && (
         <button className="primary" onClick={() => setLater(undefined)}>
-          ⭐ Beoordeel de haler
+          ⭐ Beoordeel {variant === "beer" ? "de halers" : "de haler"}
         </button>
       )}
       <button
@@ -363,18 +452,26 @@ export function ChannelWheelPage({
     <ReviewJoin
       apiUrl={api}
       capability={capability}
+      {...(variant === "beer"
+        ? { explanation: "Log in om na afloop de halers te beoordelen." }
+        : {})}
       viewLink={
         status.viewerCapability
-          ? channelViewRoute(status.viewerCapability)
+          ? channelViewRoute(app, status.viewerCapability)
           : undefined
       }
     />
   );
   const viewLink = status.viewerCapability && (
-    <ViewLinkButton capability={status.viewerCapability} setNotice={setNotice} />
+    <ViewLinkButton
+      app={app}
+      capability={status.viewerCapability}
+      setNotice={setNotice}
+    />
   );
   const admin = status.role === "admin" && (
     <ChannelAdmin
+      app={app}
       status={status}
       requestCapability={requestCapability}
       pending={pending}
@@ -392,8 +489,8 @@ export function ChannelWheelPage({
             <strong>{channelTitle(variant, status.channelName, word)}</strong>
             {status.round.active ? (
               <span>
-                {roundLabel(variant, word)}! Het rad draait om{" "}
-                {clock.format(Date.parse(status.round.startAt))}
+                {roundLabel(variant, word)}! Het rad draait{" "}
+                {startLabel(Date.parse(status.round.startAt))}
                 <ServerTimeLeft
                   controller={live}
                   startAt={Date.parse(status.round.startAt)}
@@ -402,7 +499,7 @@ export function ChannelWheelPage({
                 {themes[variant].icon} onder de oproep in Slack om mee te doen.
               </span>
             ) : (
-              <span>Typ /koffierad, /waterrad of /koekrad in het kanaal voor een nieuwe ronde.</span>
+              <span>{appCopy[app].again}</span>
             )}
             {viewLink}
             <ReviewProgressNote controller={live} />
@@ -421,16 +518,9 @@ export function ChannelWheelPage({
       <div className="unavailable channel-page">
         <span className="friday-badge">{channelTitle(variant, status.channelName)}</span>
         {memberBar}
-        <h1>Tijd voor koffie, water of koek?</h1>
+        <h1>{appCopy[app].idleTitle}</h1>
         <section className="channel-request">
-          <p>
-            Typ <code>/koffierad</code>, <code>/waterrad</code> of{" "}
-            <code>/koekrad</code> in het Slack-kanaal, bijvoorbeeld{" "}
-            <code>/waterrad 10</code> voor tien minuten of{" "}
-            <code>/koekrad taart 10</code> voor een taartronde. Wie op ☕, 💧 of
-            🍪 onder de oproep klikt, doet mee. Na de wachttijd draait het rad
-            hier vanzelf en kiest het één haler.
-          </p>
+          <p>{appCopy[app].idle}</p>
           {status.roundsLeft === 0 && (
             <p className="helper">Vandaag zijn er genoeg rondes geweest. Morgen weer!</p>
           )}
@@ -445,11 +535,18 @@ export function ChannelWheelPage({
 }
 
 /** The view-only word link: the latest round's wheel, nothing to request or manage. */
-export function ChannelViewPage({ capability }: { capability: string }) {
+export function ChannelViewPage({
+  app = "coffee",
+  capability,
+}: {
+  app?: ChannelApp;
+  capability: string;
+}) {
   const api = configuredApiUrl();
+  const own = channelApps[app];
   const [round, setRound] = useState<ChannelRound | null>();
   const [channelName, setChannelName] = useState<string>();
-  const [shown, setShown] = useState<ChannelVariant>("coffee");
+  const [shown, setShown] = useState<ChannelVariant>(idleVariant(app));
   const [word, setWord] = useState<string>();
   const [gone, setGone] = useState(false);
   const live = useRoundController(api, round?.spectatorCapability);
@@ -462,7 +559,7 @@ export function ChannelViewPage({ capability }: { capability: string }) {
           if (active && result.type === "view") {
             setRound(result.round ?? null);
             setChannelName(result.channelName);
-            setShown(result.round?.variant ?? result.variant ?? "coffee");
+            setShown(result.round?.variant ?? result.variant ?? idleVariant(app));
             setWord(result.round?.title);
           }
         },
@@ -479,18 +576,20 @@ export function ChannelViewPage({ capability }: { capability: string }) {
       clearInterval(timer);
       window.removeEventListener("focus", refresh);
     };
-  }, [api, capability]);
+  }, [api, app, capability]);
   if (!api || gone)
     return (
       <ChannelTheme variant={shown}>
         <div className="unavailable channel-page">
-          <h1>☕ Dit Koffierad is niet beschikbaar.</h1>
+          <h1>
+            {own.icon} Dit {own.name} is niet beschikbaar.
+          </h1>
           <p>
             {gone
               ? "Deze meekijklink is vervangen of de koppeling is opgeheven. Vraag de beheerder van het kanaal om de nieuwe link."
               : "Live kanaalrondes zijn hier nog niet ingesteld."}
           </p>
-          <a href="#/coffee">Open een lokaal Koffierad</a>
+          <a href={own.local}>Open een lokaal {own.name}</a>
         </div>
       </ChannelTheme>
     );
@@ -511,8 +610,8 @@ export function ChannelViewPage({ capability }: { capability: string }) {
             <span>
               {round.active ? (
                 <>
-                  {roundLabel(shown, word)}! Het rad draait om{" "}
-                  {clock.format(Date.parse(round.startAt))}
+                  {roundLabel(shown, word)}! Het rad draait{" "}
+                  {startLabel(Date.parse(round.startAt))}
                   <ServerTimeLeft
                     controller={live}
                     startAt={Date.parse(round.startAt)}
@@ -521,7 +620,7 @@ export function ChannelViewPage({ capability }: { capability: string }) {
                   mee te doen.
                 </>
               ) : (
-                "Typ /koffierad, /waterrad of /koekrad in het kanaal voor een nieuwe ronde."
+                appCopy[app].again
               )}
             </span>
             <ReviewProgressNote controller={live} />
@@ -534,11 +633,8 @@ export function ChannelViewPage({ capability }: { capability: string }) {
     <ChannelTheme variant={shown}>
       <div className="unavailable channel-page" aria-live="polite">
         <span className="friday-badge">{channelTitle(shown, channelName)}</span>
-        <h1>Tijd voor koffie, water of koek?</h1>
-        <p>
-          Typ <code>/koffierad</code>, <code>/waterrad</code> of{" "}
-          <code>/koekrad</code> in het Slack-kanaal. Zodra er een ronde is, draait het rad hier vanzelf.
-        </p>
+        <h1>{appCopy[app].idleTitle}</h1>
+        <p>{appCopy[app].viewIdle}</p>
       </div>
     </ChannelTheme>
   );
@@ -610,13 +706,15 @@ function ChannelLive({ controller }: { controller?: RemoteSessionController }) {
 
 /** The word link for a TV or second screen: copied, and shown to type over. */
 function ViewLinkButton({
+  app,
   capability,
   setNotice,
 }: {
+  app: ChannelApp;
   capability: string;
   setNotice: (text: string) => void;
 }) {
-  const link = channelViewLink(capability);
+  const link = channelViewLink(app, capability);
   return (
     <button
       className="link-button"
@@ -633,12 +731,14 @@ function ViewLinkButton({
 }
 
 function ChannelAdmin({
+  app,
   status,
   requestCapability,
   pending,
   act,
   setNotice,
 }: {
+  app: ChannelApp;
   status: ChannelStatus;
   requestCapability?: string;
   pending: boolean;
@@ -657,7 +757,7 @@ function ChannelAdmin({
         <button
           disabled={pending}
           onClick={() =>
-            void navigator.clipboard.writeText(channelLink(requestCapability)).then(
+            void navigator.clipboard.writeText(channelLink(app, requestCapability)).then(
               () =>
                 setNotice(
                   "Link gekopieerd. Iedereen met deze link kan meekijken en inloggen om te beoordelen.",
@@ -674,25 +774,47 @@ function ChannelAdmin({
           Maak een nieuwe kanaallink om ook een meekijklink in woorden te krijgen.
         </p>
       )}
-      <label>
-        Standaardwachttijd{" "}
-        <select
-          value={status.defaultMinutes}
-          disabled={pending}
-          onChange={(e) =>
-            void act(
-              { type: "setDefaultMinutes", minutes: Number(e.target.value) },
-              "Standaardwachttijd opgeslagen.",
-            )
-          }
-        >
-          {Array.from({ length: MAX_ROUND_MINUTES }, (_, i) => i + 1).map((m) => (
-            <option key={m} value={m}>
-              {m} {m === 1 ? "minuut" : "minuten"}
-            </option>
-          ))}
-        </select>
-      </label>
+      {app === "beer" ? (
+        <label>
+          Standaard aantal bierhalers{" "}
+          <select
+            value={status.defaultWinners ?? DEFAULT_BEER_WINNERS}
+            disabled={pending}
+            onChange={(e) =>
+              void act(
+                { type: "setDefaultWinners", winners: Number(e.target.value) },
+                "Standaard aantal bierhalers opgeslagen.",
+              )
+            }
+          >
+            {Array.from({ length: MAX_BEER_WINNERS }, (_, i) => i + 1).map((n) => (
+              <option key={n} value={n}>
+                {n} {n === 1 ? "bierhaler" : "bierhalers"}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <label>
+          Standaardwachttijd{" "}
+          <select
+            value={status.defaultMinutes}
+            disabled={pending}
+            onChange={(e) =>
+              void act(
+                { type: "setDefaultMinutes", minutes: Number(e.target.value) },
+                "Standaardwachttijd opgeslagen.",
+              )
+            }
+          >
+            {Array.from({ length: MAX_ROUND_MINUTES }, (_, i) => i + 1).map((m) => (
+              <option key={m} value={m}>
+                {m} {m === 1 ? "minuut" : "minuten"}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label>
         Reviews standaard aan{" "}
         <input
@@ -752,7 +874,8 @@ function ChannelAdmin({
         onClick={() => {
           if (
             window.confirm(
-              "Het Koffierad ontkoppelen? Alle links vervallen. Een lopende ronde draait nog af.",
+              `Het ${channelApps[app].name} ontkoppelen? Alle links vervallen. Een lopende ronde draait nog af.`,
+
             )
           )
             void act({ type: "unbind" });

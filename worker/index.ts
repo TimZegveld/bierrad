@@ -19,7 +19,13 @@ import {
 } from "./auth";
 import { frontend, json, readBody, readFormBody, redirect } from "./http";
 import { RequestError } from "./session";
-import { channelCopy, roundCopy, validRoundMinutes } from "../shared/channel";
+import {
+  channelApps,
+  channelCopy,
+  roundCopy,
+  validRoundMinutes,
+  type ChannelApp,
+} from "../shared/channel";
 import { channelLocator, channelViewerLocator } from "./channel/wheel";
 import {
   ephemeral,
@@ -61,34 +67,41 @@ async function creationAllowed(env: WorkerEnv, ip: string) {
   );
 }
 /**
- * Sign in with Slack, only to bind a Koffierad to a channel or for a personal
- * channel link; it never starts a session. Top-level navigations carry no Origin
- * header and the callback needs a query, so they bypass the API gate below and
- * only ever answer with redirects; capabilities go into the URL fragment only.
+ * Sign in with Slack, only to bind a channel or for a personal channel link;
+ * it never starts a session. `/auth/slack/channel/<C…>` binds with the
+ * Koffierad app, `/auth/slack/beer-channel/<C…>` with the Bierrad app; a
+ * personal login uses the app of the channel its link belongs to. Top-level
+ * navigations carry no Origin header and the callback needs a query, so these
+ * bypass the API gate below and only ever answer with redirects; capabilities
+ * go into the URL fragment only.
  */
 async function slackAuth(
   request: Request,
   env: WorkerEnv,
   url: URL,
 ): Promise<Response> {
-  const app = frontend(env);
-  if (!app) return json({ code: "unavailable" }, 503);
+  const frontendUrl = frontend(env);
+  if (!frontendUrl) return json({ code: "unavailable" }, 503);
   const callback = `${url.origin}/auth/slack/callback`;
   const pending = parseLoginCookie(request.headers.get("Cookie"));
-  // Binding a Koffierad to a channel: the channel travels in the login cookie.
-  const bindStart = /^\/auth\/slack\/channel\/([CG][A-Z0-9]{8,20})$/.exec(
-    url.pathname,
-  );
+  // Binding a channel: the channel and the app travel in the login cookie.
+  const bindStart =
+    /^\/auth\/slack\/(channel|beer-channel)\/([CG][A-Z0-9]{8,20})$/.exec(
+      url.pathname,
+    );
   const callbackPath = url.pathname === "/auth/slack/callback";
   const binding = !!bindStart || (callbackPath && !!pending?.channelId);
   // A personal channel link: started by a form POST from the channel page.
   const memberStart = url.pathname === "/auth/slack/member";
+  let app: ChannelApp = bindStart
+    ? bindStart[1] === "beer-channel"
+      ? "beer"
+      : "coffee"
+    : (pending?.variant ?? "coffee");
   const clear = loginCookie("", 0);
   const fail = (reason: string) =>
     redirect(
-      binding
-        ? `${app.href}#/koffie-koppelen/${reason}`
-        : `${app.href}#/koffie-login/${reason}`,
+      `${frontendUrl.href}#/${channelApps[app].route}-${binding ? "koppelen" : "login"}/${reason}`,
       clear,
     );
   try {
@@ -118,15 +131,14 @@ async function slackAuth(
         !capability?.locator
       )
         return fail("expired");
-      if (
-        !(await env.CHANNELS.getByName(capability.locator).memberLoginAllowed(
-          capability.secret,
-        ))
-      )
-        return fail("expired");
+      const own = await env.CHANNELS.getByName(
+        capability.locator,
+      ).memberLoginAllowed(capability.secret);
+      if (!own) return fail("expired");
+      app = own;
       const login = beginLogin(
-        slackEnvironment(env, "coffee"),
-        "coffee",
+        slackEnvironment(env, app),
+        app,
         callback,
         Date.now(),
         undefined,
@@ -137,11 +149,11 @@ async function slackAuth(
     if (bindStart) {
       if (url.search) return fail("expired");
       const login = beginLogin(
-        slackEnvironment(env, "coffee"),
-        "coffee",
+        slackEnvironment(env, app),
+        app,
         callback,
         Date.now(),
-        bindStart[1],
+        bindStart[2],
       );
       return redirect(login.location, login.cookie);
     }
@@ -152,24 +164,25 @@ async function slackAuth(
     if (!pending.memberLocator && !(await creationAllowed(env, ip)))
       return fail("busy");
     const workspace = await completeLogin(
-      slackEnvironment(env, pending.variant),
+      slackEnvironment(env, app),
       pending,
       url.searchParams,
       callback,
     );
+    const route = channelApps[app].route;
     if (pending.memberLocator) {
       let personal: string;
       try {
         personal = await env.CHANNELS.getByName(
           pending.memberLocator,
-        ).addMember(workspace.userId, workspace.teamId);
+        ).addMember(workspace.userId, workspace.teamId, app);
       } catch {
         return fail("expired");
       }
-      return redirect(`${app.href}#/koffie/${personal}`, clear);
+      return redirect(`${frontendUrl.href}#/${route}/${personal}`, clear);
     }
     if (!pending.channelId) return fail("expired");
-    const locator = await channelLocator(pending.channelId);
+    const locator = await channelLocator(pending.channelId, app);
     const admin = randomHex(),
       requestSecret = randomHex();
     const [adminHash, requestHash] = await Promise.all([
@@ -180,6 +193,7 @@ async function slackAuth(
     try {
       await env.CHANNELS.getByName(locator).bind(
         {
+          app,
           locator,
           channelId: pending.channelId,
           teamId: workspace.teamId,
@@ -188,7 +202,7 @@ async function slackAuth(
           requestHash,
           requestCapability,
         },
-        `${app.href}#/koffie/${requestCapability}`,
+        `${frontendUrl.href}#/${route}/${requestCapability}`,
       );
     } catch (error) {
       // RPC errors keep only their message: a fixed code from RequestError.
@@ -199,7 +213,7 @@ async function slackAuth(
       );
     }
     return redirect(
-      `${app.href}#/koffie-beheer/${locator}.${admin}/${requestCapability}`,
+      `${frontendUrl.href}#/${route}-beheer/${locator}.${admin}/${requestCapability}`,
       clear,
     );
   } catch (error) {
@@ -207,14 +221,23 @@ async function slackAuth(
   }
 }
 
+/** Ephemeral replies for a `/bierrad` that cannot start at the chosen time. */
+const refusals = {
+  past: "Dat tijdstip is al geweest (of is binnen een minuut). Kies een latere tijd, of een dag erbij: bijvoorbeeld `/bierrad morgen 15.45`.",
+  far: "Zo ver vooruit kan niet: plan een bierronde hooguit 30 dagen vooruit.",
+  intro: "Je eigen tekst is te lang: hooguit 500 tekens en 8 regels.",
+} as const;
 /**
- * `/koffierad [minuten]`, `/waterrad [minuten]` and `/koekrad [titel] [minuten]` from Slack. Server-to-server: no Origin or capability,
- * authorized solely by the Koffierad app's request signature.
+ * Slash commands from Slack. Server-to-server: no Origin or capability,
+ * authorized solely by the request signature of the app the endpoint belongs
+ * to: `/slack/commands` for the Koffierad (`/koffierad`, `/waterrad`,
+ * `/koekrad`), `/slack/bier-commands` for the Bierrad (`/bierrad`).
  */
 async function slashCommand(
   request: Request,
   env: WorkerEnv,
   ctx: ExecutionContext,
+  app: ChannelApp,
 ): Promise<Response> {
   try {
     const body = await readSlashBody(request);
@@ -223,19 +246,24 @@ async function slashCommand(
       return new Response(null, { status: 200 });
     if (
       !(await verifySlackSignature(
-        env.COFFEE_SLACK_SIGNING_SECRET,
+        app === "beer"
+          ? env.SLACK_SIGNING_SECRET
+          : env.COFFEE_SLACK_SIGNING_SECRET,
         request.headers,
         body,
       ))
     )
       return json({ code: "forbidden" }, 401);
-    const command = parseSlashCommand(body);
+    const command = parseSlashCommand(body, app);
     if (command.kind === "invalid") return json({ code: "invalid" }, 400);
     const icon = themes[command.variant].icon;
+    const own = channelApps[app];
     if (command.kind === "wrongChannel")
       return ephemeral(
-        `${icon} Gebruik ${channelCopy[command.variant].command} in een kanaal waar het Koffierad aan gekoppeld is.`,
+        `${icon} Gebruik ${channelCopy[command.variant].command} in een kanaal waar het ${own.name} aan gekoppeld is.`,
       );
+    if (command.kind === "refused")
+      return ephemeral(`${icon} ${refusals[command.reason]}`);
     if (
       command.kind === "help" ||
       (command.minutes !== undefined && !validRoundMinutes(command.minutes))
@@ -248,15 +276,24 @@ async function slashCommand(
       !(await env.CREATION_GLOBAL.limit({ key: "creation" })).success
     )
       return ephemeral(`${icon} Even rustig aan. Probeer het over een minuut opnieuw.`);
-    // Coffee, water and cookie share the channel's one binding and its round limits.
+    // Coffee, water and cookie share the channel's Koffierad binding and its
+    // round limits; the Bierrad has its own binding.
     const work = env.CHANNELS.getByName(
-      await channelLocator(command.channelId),
-    ).slash(command.minutes, command.channelName, command.variant, command.title);
+      await channelLocator(command.channelId, app),
+    ).slash({
+      variant: command.variant,
+      ...(command.minutes !== undefined ? { minutes: command.minutes } : {}),
+      ...(command.channelName ? { channelName: command.channelName } : {}),
+      ...(command.title ? { title: command.title } : {}),
+      ...(command.startAt !== undefined ? { startAt: command.startAt } : {}),
+      ...(command.winners !== undefined ? { winners: command.winners } : {}),
+      ...(command.intro ? { intro: command.intro } : {}),
+    });
     // Slack waits about three seconds; the round continues after we answer.
     ctx.waitUntil(work.catch(() => undefined));
     const reply = await Promise.race([
       work.catch(
-        () => `${icon} Het Koffierad is nu niet bereikbaar. Probeer het zo opnieuw.`,
+        () => `${icon} Het ${own.name} is nu niet bereikbaar. Probeer het zo opnieuw.`,
       ),
       new Promise<string>((resolve) =>
         setTimeout(
@@ -283,7 +320,9 @@ export default {
     if (url.pathname.startsWith("/auth/slack/"))
       return slackAuth(request, env, url);
     if (url.pathname === "/slack/commands")
-      return slashCommand(request, env, ctx);
+      return slashCommand(request, env, ctx, "coffee");
+    if (url.pathname === "/slack/bier-commands")
+      return slashCommand(request, env, ctx, "beer");
     let response: Response;
     try {
       if (!origin || !allowed.includes(origin))

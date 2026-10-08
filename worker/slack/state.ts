@@ -40,6 +40,22 @@ export interface SlackJob {
   retryAt?: number;
   postedMessageTs?: string;
 }
+/** A Bierrad round's thread reminder goes out this long before the start. */
+export const REMINDER_LEAD_MS = 120000;
+/**
+ * Bierrad rounds only: the reminder in the call's thread. Its links are the
+ * channel's own (already posted in the channel) and go once the post settles.
+ */
+export interface ChannelReminder {
+  readyAt: number;
+  /** The fixed channel page, to log in; only with reviews. */
+  login?: string;
+  /** The channel's view-only word link (or the call's own link). */
+  view?: string;
+  status: "pending" | "posting" | "posted" | "failed" | "uncertain" | "skipped";
+  attempts: number;
+  attemptedAt?: number;
+}
 export interface SlackState {
   grantHash: string;
   grantExpiresAt?: number;
@@ -61,6 +77,9 @@ export interface SlackState {
   job?: SlackJob;
   /** Channel rounds only: the pending rewrite of the call message. */
   card?: CallCard;
+  /** Bierrad rounds only: the links in the thread shortly before the start. */
+  reminder?: ChannelReminder;
+
   /** Started by a channel-bound Koffierad: no host, refreshes itself until the draw. */
   channelRound?: boolean;
   /** Private: the bot's own user, whose prefilled reaction never counts. */

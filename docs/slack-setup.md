@@ -2,11 +2,37 @@
 
 Slack is optioneel. Standalone en publieke handmatige live-sessies blijven zonder Slack werken. De implementatie gebruikt drie expliciete Web API-methoden via een kleine getypeerde fetch-client, zonder SDK/dependency of automatische SDK-retries. Raderen blijven volledig onafhankelijk.
 
-## Bierrad-app
+## Bierrad-app: `/bierrad` in een kanaal
 
-**Start met Slack** is op 2026-10-07 verwijderd: een live-sessie kan geen Slack-bericht meer koppelen, geen reactors importeren en geen uitslag of kijklink in een thread plaatsen. `/auth/slack/beer` start geen login meer en sessies die zo gestart zijn houden geen Slack-toegang. De Bierrad-app en zijn secrets (`SLACK_BOT_TOKEN`, `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`) worden daardoor nu niet gebruikt; ze geven geen extra rechten. Verwijder ze met `npx wrangler secret delete <naam> --env=""` als je de app niet meer nodig hebt. Oude startlinks (`SLACK_START_GRANT`/`COFFEE_SLACK_START_GRANT`) werden al niet meer gelezen en kunnen ook weg.
+Het Bierrad werkt net als het [kanaal-Koffierad](#koffierad-aan-een-kanaal-koppelen), maar met de eigen Bierrad-app en eigen secrets. **Start met Slack** (een vrijdagbericht koppelen) bestaat niet meer.
 
-Sign in with Slack (OpenID Connect, user scope `openid`) blijft bestaan, alleen om een kanaal te koppelen en voor persoonlijke kanaallinks. De Worker laat alleen **volwaardige leden van de workspace van de bot** inloggen: geen gasten, externe Slack Connect-gebruikers, bots, apps of verwijderde accounts. Het gebruikerstoken wordt direct ingetrokken en er wordt geen Slack-identiteit bewaard. Enterprise Grid met meerdere workspaces wordt niet ondersteund.
+### Eenmalig in de Bierrad-app
+
+1. Werk de app bij met het [manifest](slack-app-manifest.json) (App Manifest in de appinstellingen). Nieuw zijn de bot scopes `reactions:write` (de bot zet zelf de eerste 🍻 onder zijn oproep) en `commands`, plus het slashcommando `/bierrad` met als Request URL `https://bierrad-live.timzegveld.workers.dev/slack/bier-commands` en zonder escaping. De user scope blijft `openid` voor Sign in with Slack, met redirect-URL `https://bierrad-live.timzegveld.workers.dev/auth/slack/callback`. Herinstalleer de app als Slack daarom vraagt; werk zo nodig `SLACK_BOT_TOKEN` bij.
+2. Bewaar de secrets uitsluitend als Worker-secrets, interactief vanuit je eigen terminal (Client ID, Client Secret en Signing Secret staan onder **Basic Information → App Credentials**, het bottoken onder **OAuth & Permissions**):
+
+```sh
+npx wrangler secret put SLACK_BOT_TOKEN --env=""
+npx wrangler secret put SLACK_CLIENT_ID --env=""
+npx wrangler secret put SLACK_CLIENT_SECRET --env=""
+npx wrangler secret put SLACK_SIGNING_SECRET --env=""
+```
+
+3. Zorg dat de custom emoji `spin-the-wheel` en `spinner` in de workspace staan; anders toont Slack ze als `:naam:`. Voor de sterren zie [steremoji's](#steremojis-voor-beoordelingen).
+
+### Een kanaal koppelen
+
+1. Nodig de bot uit in het kanaal: `/invite @Bierrad`.
+2. Open `#/bier-koppelen` (of **Koppel aan een Slack-kanaal** op het lokale Bierrad), plak de kanaallink en log in met Slack. Alleen volwaardige leden van de workspace mogen koppelen. De bot plaatst een bevestiging met de vaste kanaallink (`#/bier/…`); jij krijgt de beheerpagina (`#/bier-beheer/…`, alleen voor jezelf).
+3. Op de beheerpagina kies je het standaard aantal bierhalers (standaard 2), reviews aan/uit en de stemtijd (standaard 30 minuten).
+
+### Gebruik
+
+- `/bierrad`: vandaag om 15:45, met het standaard aantal halers.
+- `/bierrad 15.44`, `/bierrad morgen`, `/bierrad vrijdag 16.00 3`, `/bierrad 10-10 16.30`: dag (`vandaag`, `morgen`, `overmorgen`, een weekdag of `dd-mm[-jjjj]`), tijd (`H.MM` of `H:MM`) en aantal (1–10) staan vooraan, in willekeurige volgorde. Een weekdag is de eerstvolgende waarop die tijd nog komt. Een tijd die al geweest is (of binnen een minuut) of meer dan 30 dagen vooruit ligt, wordt geweigerd.
+- Alles daarna is je eigen tekst boven de vaste oproep, tot 500 tekens en 8 regels. Emoji-codes worden emoji en `*vet*` wordt vet; mentions, `@channel`, links en andere opmaak blijven gewone tekst.
+
+De bot plaatst de oproep ("Het bierronde radje", met "radje" als link naar de ronde) en zet er een 🍻 onder. Twee minuten voor de start komt in de thread een bericht met **Inloggen** (om te reviewen) of **alleen meekijken**. Op de starttijd draait het rad op de server, de winnaars komen in de thread en de oproep wordt bijgewerkt. Per kanaal loopt één bierronde tegelijk.
 
 ## Lokale ontwikkeling en acceptatie
 

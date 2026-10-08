@@ -1,5 +1,11 @@
 import { isChannelVariant, type ChannelVariant } from "../shared/channel";
-import { reviewBody, settledCallBody } from "./channel/messages";
+import {
+  beerReminderBody,
+  reviewBody,
+  settledCallBody,
+} from "./channel/messages";
+import { cleanIntro } from "./channel/beer";
+import { validWinnerCount } from "../shared/channel";
 import { roundTitle, type WheelVariant } from "../shared/variant";
 import { SlackApiClient, SlackError } from "./slack/api";
 import {
@@ -41,6 +47,7 @@ import { SCHEDULE_RETENTION_MS } from "../shared/retention";
 import {
   advance,
   channelRefreshAt,
+  refreshInterval,
   executeScheduledDraw,
   START_DELAY_MS,
   mutate,
@@ -93,8 +100,10 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
     return new Date(record.expiresAt).toISOString();
   }
   /**
-   * A coffee, water or Koekrad round of a channel-bound Koffierad: spectators only, one winner, the Slack
-   * call message as source and a fixed start. Nobody receives host rights.
+   * A round of a channel-bound wheel: spectators only, the Slack call message
+   * as source and a fixed start. Nobody receives host rights. Coffee, water
+   * and Koekrad rounds have one winner; a Bierrad round its own number, own
+   * text and a reminder in the thread.
    */
   async initializeChannelRound(
     spectatorHash: string,
@@ -104,6 +113,11 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
     variant: ChannelVariant = "coffee",
     review?: { minutes: number; key: string; link: string },
     title?: string,
+    beer?: {
+      winners: number;
+      intro?: string;
+      reminder?: { readyAt: number; login?: string; view: string };
+    },
   ): Promise<void> {
     const hostHash = await hashSecret(randomHex());
     if (this.read()) throw new Error("unavailable");
@@ -115,8 +129,13 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
     // Validated again: only a Koekrad round carries a word.
     const word = variant === "cookie" ? roundTitle(title) : undefined;
     if (word) record.title = word;
-    record.preferredCount = 1;
-    record.session = createSession(record.session.id, [], 1);
+    // Validated again: only a Bierrad round has more winners and its own text.
+    const winners =
+      variant === "beer" && validWinnerCount(beer?.winners) ? beer.winners : 1;
+    const intro = variant === "beer" ? cleanIntro(beer?.intro) : undefined;
+    if (intro) record.intro = intro;
+    record.preferredCount = winners;
+    record.session = createSession(record.session.id, [], winners);
     record.expiresAt = startAt + SCHEDULE_RETENTION_MS;
     record.scheduledDraw = {
       startAt: new Date(startAt).toISOString(),
@@ -131,6 +150,20 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
       excludeUserIds: [...excludeUserIds],
       // The first read waits a minute: right after posting only the bot reacted.
       nextImportAt: now + 60000,
+      ...(variant === "beer" &&
+      beer?.reminder &&
+      beer.reminder.readyAt > now &&
+      beer.reminder.readyAt < startAt
+        ? {
+            reminder: {
+              readyAt: beer.reminder.readyAt,
+              view: beer.reminder.view,
+              ...(beer.reminder.login ? { login: beer.reminder.login } : {}),
+              status: "pending" as const,
+              attempts: 0,
+            },
+          }
+        : {}),
     };
     if (review) record.review = { ...review, status: "waiting" };
     this.save(record);
@@ -367,6 +400,7 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
       this.save(record);
       this.broadcast(record);
     }
+    await this.processChannelReminder();
     await this.processChannelRefresh();
     await this.processScheduledDraw();
     await this.processSlackResult();
@@ -375,6 +409,84 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
     const latest = this.read();
     if (latest && Date.now() < latest.expiresAt)
       await this.ctx.storage.setAlarm(nextDeadline(latest));
+  }
+  /**
+   * The thread reminder of a Bierrad round: claimed before I/O, never repeated
+   * when delivery is uncertain, retried once after a definite rejection and
+   * only before the start. Its links go as soon as it settles.
+   */
+  private async processChannelReminder() {
+    const record = this.read();
+    const reminder = record?.slack?.reminder,
+      source = record?.slack?.source;
+    if (!record || Date.now() >= record.expiresAt || !reminder || !source)
+      return;
+    const settle = (
+      target: StoredSession,
+      status: "posted" | "failed" | "uncertain" | "skipped",
+    ) => {
+      const r = target.slack!.reminder!;
+      r.status = status;
+      delete r.login;
+      delete r.view;
+      this.save(target);
+    };
+    if (reminder.status === "posting") {
+      if (Date.now() >= reminder.attemptedAt! + 120000)
+        settle(record, "uncertain");
+      return;
+    }
+    if (reminder.status !== "pending" || reminder.readyAt > Date.now()) return;
+    const plan = record.scheduledDraw;
+    if (
+      !reminder.view ||
+      plan?.status !== "pending" ||
+      Date.now() >= Date.parse(plan.startAt) - 30000 ||
+      !slackAllowed(
+        record.slack!.grantHash,
+        slackEnvironment(this.env, record.variant),
+      )
+    ) {
+      settle(record, "skipped");
+      return;
+    }
+    const body = beerReminderBody(source.channelId, source.parentMessageTs, {
+      view: reminder.view,
+      ...(reminder.login ? { login: reminder.login } : {}),
+    });
+    reminder.status = "posting";
+    reminder.attempts++;
+    const attemptedAt = (reminder.attemptedAt = Date.now());
+    this.save(record);
+    await this.ctx.storage.setAlarm(nextDeadline(record));
+    await this.ctx.storage.sync();
+    const result = await postMessage(
+      new SlackApiClient(
+        slackEnvironment(this.env, record.variant).SLACK_BOT_TOKEN!,
+      ),
+      source.channelId,
+      body,
+    );
+    const latest = this.read();
+    const current = latest?.slack?.reminder;
+    if (
+      !latest ||
+      Date.now() >= latest.expiresAt ||
+      current?.status !== "posting" ||
+      current.attemptedAt !== attemptedAt
+    )
+      return;
+    const start = Date.parse(latest.scheduledDraw?.startAt ?? "");
+    if (
+      result.status === "failed" &&
+      current.attempts < 2 &&
+      result.retryAt < start - 30000
+    ) {
+      current.status = "pending";
+      current.readyAt = result.retryAt;
+      this.save(latest);
+    } else settle(latest, result.status);
+    await this.ctx.storage.setAlarm(nextDeadline(latest));
   }
   private async processChannelRefresh() {
     const record = this.read();
@@ -545,7 +657,8 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
     if (!source) throw new RequestError(400, "slack_link");
     const id = crypto.randomUUID();
     state.importing = { id, until: Date.now() + 120000 };
-    state.nextImportAt = Date.now() + 60000;
+    state.nextImportAt = Date.now() + refreshInterval(record, Date.now());
+
     if (finalCheck) state.nextFinalImportAt = Date.now() + 60000;
     record.revision++;
     this.save(record);
@@ -705,6 +818,7 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
         card,
         record.review?.status === "open" ? record.review.link : undefined,
         record.title,
+        record.intro,
       ),
     );
     const latest = this.read();

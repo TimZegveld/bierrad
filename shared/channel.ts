@@ -1,12 +1,59 @@
 /** Public contract for channel-bound Koffierad wheels. No secrets or Slack IDs. */
-import { roundTitle, type WheelVariant } from "./variant";
+import { roundTitle, themes, type SlackApp, type WheelVariant } from "./variant";
 import type { ReviewBallot, ReviewSettings } from "./reviews";
-/** What a channel round fetches; one binding serves both. */
-export type ChannelVariant = Extract<WheelVariant, "coffee" | "water" | "cookie">;
-export const channelVariants: readonly ChannelVariant[] = ["coffee", "water", "cookie"];
+/** What a channel round fetches; a binding serves the variants of its own app. */
+export type ChannelVariant = Extract<
+  WheelVariant,
+  "coffee" | "water" | "cookie" | "beer"
+>;
+export const channelVariants: readonly ChannelVariant[] = [
+  "coffee",
+  "water",
+  "cookie",
+  "beer",
+];
 export function isChannelVariant(value: unknown): value is ChannelVariant {
   return (channelVariants as readonly unknown[]).includes(value);
 }
+/**
+ * The Slack app a channel is bound with. Each app has its own binding per
+ * channel, its own credentials and its own commands; nothing is shared.
+ */
+export type ChannelApp = SlackApp;
+export function channelApp(variant: ChannelVariant): ChannelApp {
+  return themes[variant].slackApp;
+}
+/** Fixed per-app copy and routes; display only, never authorizes. */
+export const channelApps: Record<
+  ChannelApp,
+  {
+    name: string;
+    icon: string;
+    /** Frontend route prefix: `#/<route>/<link>`, `#/<route>-beheer/…`. */
+    route: "koffie" | "bier";
+    bot: string;
+    /** The local wheel to fall back on. */
+    local: "#/coffee" | "#/beer";
+    variants: readonly ChannelVariant[];
+  }
+> = {
+  coffee: {
+    name: "Koffierad",
+    icon: "☕",
+    route: "koffie",
+    bot: "@Koffierad",
+    local: "#/coffee",
+    variants: ["coffee", "water", "cookie"],
+  },
+  beer: {
+    name: "Bierrad",
+    icon: "🍻",
+    route: "bier",
+    bot: "@Bierrad",
+    local: "#/beer",
+    variants: ["beer"],
+  },
+};
 /** Fixed channel copy per variant; display only, never authorizes. */
 export const channelCopy: Record<
   ChannelVariant,
@@ -30,6 +77,12 @@ export const channelCopy: Record<
     rounds: "koekrondes",
     tap: "halen",
   },
+  beer: {
+    command: "/bierrad",
+    round: "bierronde",
+    rounds: "bierrondes",
+    tap: "halen",
+  },
 };
 /** A round's copy; a Koekrad round with a valid title takes that word. */
 export function roundCopy(variant: ChannelVariant, title?: string) {
@@ -40,6 +93,19 @@ export function roundCopy(variant: ChannelVariant, title?: string) {
     : copy;
 }
 export const DEFAULT_ROUND_MINUTES = 5;
+/** `/bierrad` without a time draws today at this Dutch time. */
+export const DEFAULT_BEER_TIME = "15:45";
+/** Winners per Bierrad round: the channel default unless `/bierrad` names one. */
+export const DEFAULT_BEER_WINNERS = 2;
+export const MAX_BEER_WINNERS = 10;
+export function validWinnerCount(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= 1 &&
+    value <= MAX_BEER_WINNERS
+  );
+}
 export const MAX_ROUND_MINUTES = 30;
 /** Rounds per channel per rolling 24 hours. */
 export const MAX_ROUNDS_PER_DAY = 25;
@@ -64,6 +130,10 @@ export interface ChannelRound {
 export interface ChannelStatus {
   /** `member`: a personal link from Sign in with Slack; requests rounds and reviews. */
   role: "admin" | "requester" | "member";
+  /** The app this channel is bound with; absent on Koffierad bindings. */
+  app?: ChannelApp;
+  /** Bierrad only: winners per round unless `/bierrad` names a number. */
+  defaultWinners?: number;
   /** The theme to show: the latest round's, coffee before any round. */
   variant?: ChannelVariant;
   defaultMinutes: number;
@@ -81,9 +151,10 @@ export interface ChannelStatus {
     ballot?: ReviewBallot;
   };
 }
-/** Rounds start only from a signed `/koffierad`, `/waterrad` or `/koekrad`, never with a link. */
+/** Rounds start only from a signed slash command, never with a link. */
 export type ChannelCommand =
   | { type: "setDefaultMinutes"; minutes: number }
+  | { type: "setDefaultWinners"; winners: number }
   | { type: "setReviews"; enabled: boolean; minutes: number }
   | { type: "review"; drawId: string; scores: number[]; texts: string[] }
   | { type: "logout" }
@@ -97,6 +168,7 @@ export type ChannelCommandResult =
   /** All a view-only word link gets: the latest round, no commands. */
   | {
       type: "view";
+      app?: ChannelApp;
       variant?: ChannelVariant;
       channelName?: string;
       round?: ChannelRound;

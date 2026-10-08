@@ -2,6 +2,7 @@
   "display_information": {
     "name": "Bierrad",
     "description": "Samen draaien, samen bier halen.",
+    "long_description": "Het Bierrad beslist wie deze week het bier haalt. Geen discussie, gewoon draaien.\n\nTyp /bierrad in een gekoppeld kanaal en de bot plaatst de oproep voor de bierronde. Wie met :beers: reageert, doet mee. Standaard draait het rad vandaag om 15:45 en kiest het twee halers; kies zelf een dag, tijd of aantal, bijvoorbeeld /bierrad vrijdag 16.00 3, en zet er gerust een eigen tekst achter.\n\nVia de link in de oproep kijk je live mee of log je in met Slack. Twee minuten voor de start herinnert de bot iedereen in de thread. Na de trekking staan de halers in de thread en kunnen de deelnemers ze anoniem 1 tot 5 sterren geven.\n\nHet Bierrad bewaart geen historie: stemmen en deelnemers verdwijnen na de ronde.",
     "background_color": "#7a4e10"
   },
   "features": {

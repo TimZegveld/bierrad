@@ -8,7 +8,7 @@ import {
 import { useTheme } from "../Theme";
 import type { SessionController } from "../sessions/SessionController";
 import { advanceDraw, sessionWinners } from "../domain/drawEngine";
-import { countLabel, resultShownAt } from "../domain/presentation";
+import { countLabel, joinNames, resultShownAt } from "../domain/presentation";
 import { SpectatorView } from "./SpectatorView";
 
 /** A replay counts down "3, 2, 1" before the wheels turn again. */
@@ -108,6 +108,7 @@ export function RoundResult({
             ))}
           </ul>
           <p>
+            {joinNames(winners.map((winner) => winner.name))}{" "}
             {winners.length === 1 ? theme.resultOne : theme.resultMany}{" "}
             {theme.ending}
           </p>

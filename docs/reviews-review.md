@@ -14,7 +14,7 @@ Implementatiereview tegen [SECURITY.md](../SECURITY.md#round-reviews--reviewed-e
 ## Gegevens
 
 - **Kanaal:** een HMAC-sleutel per koppeling, en per persoonlijke link alleen `{hash, pseudoniem, verloopt}`. Verder de reviewinstelling en hooguit vijf sessielocators van rondes met reviews; een locator geeft zelf geen toegang. Er worden geen Slack-ID's, namen of ruwe persoonlijke links opgeslagen; de integratietest controleert dat.
-- **Sessie:** tot het sluiten de sleutel, de kanaallink, de pseudoniemen van wie mag stemmen en van wie gestemd heeft, en per winnaar de som, het aantal en de teksten. Bij het sluiten worden de pseudoniemen, de sleutel en de link gewist. De teksten worden gewist zodra het threadbericht is afgehandeld. De rest verdwijnt met de sessie, één uur na de start.
+- **Sessie:** tot het sluiten de sleutel, de kanaallink, de pseudoniemen van wie mag stemmen en van wie gestemd heeft, en per winnaar de som, het aantal en de teksten. Bij het sluiten worden de pseudoniemen, de sleutel en de link gewist. Elke winnaar krijgt een eigen threadbericht (sinds 2026-10-08, op verzoek van de eigenaar); de teksten van een winnaar worden gewist zodra dat bericht is afgehandeld. De rest verdwijnt met de sessie, één uur na de start.
 - **DTO's:** toeschouwers zien alleen `{closesAt, voted, eligible}`; een persoonlijke link ziet alleen de eigen deelname en het eigen stembiljet.
 
 ## Standaard

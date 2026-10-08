@@ -82,7 +82,7 @@ export class DemoSession extends LiveSession {
     if (before?.slack?.source) {
       delete before.slack.nextImportAt;
       this.save(before);
-      await this.importSlack(before, "host", { type: "slackImport", revision: before.revision }).catch(() => {});
+      await this.importSlack(before).catch(() => {});
     }
     this.demoEdit((r) => {
       if (r.scheduledDraw && !["skipped", "refreshing"].includes(r.scheduledDraw.status))

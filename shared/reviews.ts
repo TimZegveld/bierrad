@@ -44,6 +44,16 @@ export interface ReviewProgress {
   voted: number;
   eligible: number;
 }
+/**
+ * A closed round's reviews of one winner, as its result page shows them: the
+ * same anonymous average, count and shuffled texts the thread reply posts.
+ */
+export interface ReviewOutcome {
+  name: string;
+  average: number;
+  count: number;
+  texts: string[];
+}
 /** One person's ballot: only the winners they may review, never themselves. */
 export interface ReviewBallot {
   drawId: string;

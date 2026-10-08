@@ -14,7 +14,7 @@ Implementatiereview tegen [SECURITY.md](../SECURITY.md#round-reviews--reviewed-e
 ## Gegevens
 
 - **Kanaal:** een HMAC-sleutel per koppeling, en per persoonlijke link alleen `{hash, pseudoniem, verloopt}`. Verder de reviewinstelling en hooguit vijf sessielocators van rondes met reviews; een locator geeft zelf geen toegang. Er worden geen Slack-ID's, namen of ruwe persoonlijke links opgeslagen; de integratietest controleert dat.
-- **Sessie:** tot het sluiten de sleutel, de kanaallink, de pseudoniemen van wie mag stemmen en van wie gestemd heeft, en per winnaar de som, het aantal en de teksten. Bij het sluiten worden de pseudoniemen, de sleutel en de link gewist. Elke winnaar krijgt een eigen threadbericht (sinds 2026-10-08, op verzoek van de eigenaar); de teksten van een winnaar worden gewist zodra dat bericht is afgehandeld. De rest verdwijnt met de sessie, één uur na de start.
+- **Sessie:** tot het sluiten de sleutel, de kanaallink, de pseudoniemen van wie mag stemmen en van wie gestemd heeft, en per winnaar de som, het aantal en de teksten. Bij het sluiten worden de pseudoniemen, de sleutel en de link gewist. Elke winnaar krijgt een eigen threadbericht (sinds 2026-10-08, op verzoek van de eigenaar); de teksten van een winnaar worden uit de postopdracht gewist zodra dat bericht is afgehandeld. Voor de uitslagpagina (2026-10-08, op verzoek van de eigenaar) houdt de sessie per beoordeelde winnaar een kopie van naam, gemiddelde, aantal en geschudde teksten, zonder Slack-ID, pseudoniem of stemmer. Die is pas na het sluiten zichtbaar voor wie de ronde mag bekijken (kanaalpagina, woordlink, persoonlijke link: hetzelfde publiek als de thread) en verdwijnt met de rest van de sessie, één uur na de start.
 - **DTO's:** toeschouwers zien alleen `{closesAt, voted, eligible}`; een persoonlijke link ziet alleen de eigen deelname en het eigen stembiljet.
 
 ## Standaard
@@ -36,7 +36,7 @@ Stemmen opent een minuut na de finale (gevraagd door de eigenaar), en de stemtij
 
 - **Persoonlijke links zijn bearer-toegang.** Wie er een doorgestuurd krijgt, kan namens die persoon stemmen.
 - **Anoniem is niet ondoorzichtig.** In kleine groepen valt de schrijver soms te raden. Teksten worden niet gemodereerd en zijn zichtbaar voor iedereen in het kanaal, ook Slack Connect-leden.
-- **Een mislukte of onzekere threadpost wordt niet herhaald** (hooguit één retry na een duidelijke weigering). Ook na een mislukte post verdwijnen de teksten.
+- **Een mislukte of onzekere threadpost wordt niet herhaald** (hooguit één retry na een duidelijke weigering). Ook na een mislukte post verdwijnen de teksten uit de postopdracht; de uitslagpagina toont ze dan nog wel tot de sessie verloopt.
 - **Een sleutel die pas tijdens de ronde wordt aangemaakt:** bestaande rondes gebruiken de sleutel die er bij hun start was. Opnieuw koppelen tijdens een open review maakt stemmen in die ronde onmogelijk.
 
 ## Bierrad-sessies (PR 3, verwijderd)
@@ -63,7 +63,7 @@ De reviews voor sessies die met Sign in with Slack waren gestart, met hun deelna
   - voortgang met alleen aantallen;
   - geweigerd: stemmen op jezelf, ongeldige score of tekst, dubbel stemmen;
   - sluiten na de laatste stem, met de threadpost met quote en de bijgewerkte oproep met sterren;
-  - geen stemmen, teksten, pseudoniemen, sleutel of link meer in de sessie;
+  - geen stemmen, pseudoniemen, sleutel of link meer in de sessie, alleen de anonieme uitkomst per winnaar, die de kijkerssnapshot na het sluiten toont;
   - uitloggen, en roteren dat alle persoonlijke links beëindigt.
 - **`src/tests/channel.test.ts`:** de route `#/koffie-login/<reden>`.
 - **Visueel:** het stemformulier en de inlogkeuze, gecontroleerd in de ingebouwde browser op desktop en 375 px (koffie en water). Er is geen horizontale overloop, en verzenden zonder sterren geeft een foutmelding in de tekst.

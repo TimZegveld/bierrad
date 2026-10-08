@@ -15,6 +15,8 @@ export interface LiveInfo {
   scheduledDraw?: import("../../shared/protocol").ScheduledDraw;
   /** Counts only, while the round can be reviewed. */
   review?: import("../../shared/reviews").ReviewProgress;
+  /** Per winner, once the round's review has closed. */
+  reviewOutcomes?: import("../../shared/reviews").ReviewOutcome[];
 }
 export interface SessionSnapshot {
   readonly session: BeerWheelSession;

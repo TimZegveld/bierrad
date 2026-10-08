@@ -9,6 +9,7 @@ import { useTheme } from "../Theme";
 import type { SessionController } from "../sessions/SessionController";
 import { advanceDraw, sessionWinners } from "../domain/drawEngine";
 import { countLabel, joinNames, resultShownAt } from "../domain/presentation";
+import { reviewLabels, type ReviewOutcome } from "../../shared/reviews";
 import { SpectatorView } from "./SpectatorView";
 
 /** A replay counts down "3, 2, 1" before the wheels turn again. */
@@ -61,6 +62,7 @@ export function RoundResult({
   badge: string;
   /** "bierronde", or a Koekrad round's own word. */
   roundName: string;
+  /** Whether the heading says "van vandaag": only for the one Bierrad round of the day. */
   today: boolean;
   /** "om 15:45", or the day when the round was not today. */
   when: string;
@@ -70,11 +72,12 @@ export function RoundResult({
   children: ReactNode;
 }) {
   const theme = useTheme();
-  const { session } = useSyncExternalStore(
+  const { session, live } = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
   );
   const winners = sessionWinners(session);
+  const outcomes = live?.reviewOutcomes ?? [];
   const drawn = winners.length > 0;
   if (replayOpen && drawn)
     return (
@@ -126,8 +129,51 @@ export function RoundResult({
           konden niet worden gelezen.
         </p>
       )}
+      {drawn && outcomes.length > 0 && <RoundReviews outcomes={outcomes} />}
       {children}
     </div>
+  );
+}
+
+const average = new Intl.NumberFormat("nl-NL", {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+/** The anonymous reviews per haler, as the thread posted them; plain text only. */
+function RoundReviews({ outcomes }: { outcomes: readonly ReviewOutcome[] }) {
+  const theme = useTheme();
+  const labels = reviewLabels[theme.variant];
+  return (
+    <section className="round-result-reviews" aria-label="Reviews">
+      <span className="eyebrow">⭐ Reviews</span>
+      {outcomes.map((outcome, i) => {
+        const stars = Math.min(5, Math.max(1, Math.round(outcome.average)));
+        return (
+          <article key={i} className="round-review">
+            <h2>{outcome.name}</h2>
+            <p
+              className="round-review-score"
+              aria-label={`${average.format(outcome.average)} van 5 sterren`}
+            >
+              <span className="round-review-stars" aria-hidden="true">
+                {"★".repeat(stars)}
+                <span>{"★".repeat(5 - stars)}</span>
+              </span>{" "}
+              <strong>{average.format(outcome.average)}</strong> ·{" "}
+              {labels[stars - 1]} ·{" "}
+              {countLabel(outcome.count, "beoordeling", "beoordelingen")}
+            </p>
+            {outcome.texts.length > 0 && (
+              <ul className="round-review-texts">
+                {outcome.texts.map((text, j) => (
+                  <li key={j}>{text}</li>
+                ))}
+              </ul>
+            )}
+          </article>
+        );
+      })}
+    </section>
   );
 }
 

@@ -1,4 +1,4 @@
-import type { ReviewProgress } from "./reviews";
+import type { ReviewOutcome, ReviewProgress } from "./reviews";
 import type { WheelVariant } from "./variant";
 import type {
   DrawInstruction,
@@ -25,6 +25,8 @@ export interface PublicBeerWheelSession {
   scheduledDraw?: ScheduledDraw;
   /** Counts only, while a channel round can be reviewed. */
   review?: ReviewProgress;
+  /** Once a channel round's review has closed: per winner, never per voter. */
+  reviewOutcomes?: ReviewOutcome[];
 }
 export type HostCommand =
   | { type: "setParticipants"; names: string[] }

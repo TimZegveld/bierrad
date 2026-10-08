@@ -1843,6 +1843,49 @@ footer b {
 .round-result-winners .link-button {
   margin-top: 8px;
 }
+.round-result-reviews {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  padding: 18px 16px;
+  border-radius: 18px;
+  background: var(--surface);
+  border: 1px solid var(--final-border);
+  text-align: left;
+}
+.round-result-reviews .eyebrow {
+  text-align: center;
+}
+.round-review h2 {
+  margin: 0;
+  font-family: Outfit, sans-serif;
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+.round-review-score {
+  margin: 2px 0 0;
+}
+.round-review-stars {
+  font-size: 18px;
+  letter-spacing: 1px;
+  color: var(--star-on);
+}
+.round-review-stars span {
+  color: var(--star-off);
+}
+.round-review-texts {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+.round-review-texts li {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  font-style: italic;
+}
+.round-review-texts li + li {
+  margin-top: 4px;
+}
 
 /* Fixed channel page: a slim strip above the latest round's live wheel. */
 .channel-live {

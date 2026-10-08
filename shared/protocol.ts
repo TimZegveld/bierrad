@@ -25,7 +25,7 @@ export interface PublicBeerWheelSession {
   scheduledDraw?: ScheduledDraw;
   /** Counts only, while a channel round can be reviewed. */
   review?: ReviewProgress;
-  /** Once a channel round's review has closed: per winner, never per voter. */
+  /** Once a channel round's review has closed: stars per winner, never per voter, never texts. */
   reviewOutcomes?: ReviewOutcome[];
 }
 export type HostCommand =

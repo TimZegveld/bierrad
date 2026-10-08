@@ -1874,18 +1874,6 @@ footer b {
 .round-review-stars span {
   color: var(--star-off);
 }
-.round-review-texts {
-  margin: 8px 0 0;
-  padding-left: 20px;
-}
-.round-review-texts li {
-  white-space: pre-line;
-  overflow-wrap: anywhere;
-  font-style: italic;
-}
-.round-review-texts li + li {
-  margin-top: 4px;
-}
 
 /* Fixed channel page: a slim strip above the latest round's live wheel. */
 .channel-live {

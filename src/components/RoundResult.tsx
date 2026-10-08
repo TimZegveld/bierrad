@@ -139,13 +139,13 @@ const average = new Intl.NumberFormat("nl-NL", {
   minimumFractionDigits: 1,
   maximumFractionDigits: 1,
 });
-/** The anonymous reviews per haler, as the thread posted them; plain text only. */
+/** The anonymous stars per haler; the texts stay in the thread. */
 function RoundReviews({ outcomes }: { outcomes: readonly ReviewOutcome[] }) {
   const theme = useTheme();
   const labels = reviewLabels[theme.variant];
   return (
-    <section className="round-result-reviews" aria-label="Reviews">
-      <span className="eyebrow">⭐ Reviews</span>
+    <section className="round-result-reviews" aria-label="Beoordeling">
+      <span className="eyebrow">⭐ Beoordeling</span>
       {outcomes.map((outcome, i) => {
         const stars = Math.min(5, Math.max(1, Math.round(outcome.average)));
         return (
@@ -163,13 +163,6 @@ function RoundReviews({ outcomes }: { outcomes: readonly ReviewOutcome[] }) {
               {labels[stars - 1]} ·{" "}
               {countLabel(outcome.count, "beoordeling", "beoordelingen")}
             </p>
-            {outcome.texts.length > 0 && (
-              <ul className="round-review-texts">
-                {outcome.texts.map((text, j) => (
-                  <li key={j}>{text}</li>
-                ))}
-              </ul>
-            )}
           </article>
         );
       })}

@@ -281,18 +281,19 @@ test(
       assert.match(String(rated.text), /haalde koffie · :star::star::star::star::bierrad_star_5: 4\.5$/);
       assert.ok(JSON.stringify(rated.blocks).includes("2 beoordelingen in de thread"));
       assert.ok(!JSON.stringify(rated).includes(requester));
-      // Afterwards the session keeps no votes, pseudonyms, key or link; only the
-      // anonymous outcome for the result page, until the session expires.
+      // Afterwards the session keeps no votes, texts, pseudonyms, key or link;
+      // only the stars for the result page, until the session expires.
       const kept = await session.stored();
-      for (const secret of [requester, '"key"', '"eligible"', '"voted"', '"totals"', '"pseudonym"'])
+      for (const secret of ["Perfecte", requester, '"key"', '"eligible"', '"voted"', '"totals"', '"pseudonym"'])
         assert.ok(!kept.includes(secret), secret);
       assert.equal((await vote(voters[0][1], [5])).status, 409);
       const after = await snapshot();
       assert.equal(after.review, undefined);
       assert.equal(after.reviewOutcomes?.length, 1);
       assert.equal(after.reviewOutcomes![0].average, 4.5);
-      assert.deepEqual(after.reviewOutcomes![0].texts, [text]);
-      assert.ok(!JSON.stringify(after.reviewOutcomes).includes("U0"));
+      assert.equal(after.reviewOutcomes![0].count, 2);
+      for (const secret of ["U0", "Perfecte"])
+        assert.ok(!JSON.stringify(after).includes(secret), secret);
 
       // Log out ends that personal link only; rotation ends all of them.
       assert.deepEqual(await (await api(carol, { type: "logout" })).json(), { type: "loggedOut" } satisfies ChannelCommandResult);

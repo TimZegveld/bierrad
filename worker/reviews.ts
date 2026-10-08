@@ -39,7 +39,7 @@ export interface RoundReview {
   /** Per winner, never per voter. */
   totals?: { sum: number; count: number; texts: string[] }[];
   job?: ReviewJob;
-  /** After close: what the round's result page shows, until the session ends. */
+  /** After close: the stars the round's result page shows, until the session ends; never texts. */
   outcomes?: ReviewOutcome[];
 }
 export interface ReviewResult {
@@ -225,11 +225,10 @@ export function closeReview(record: StoredSession, now: number): void {
   delete review.winners;
   if (results.length) {
     review.job = { results, status: "pending", readyAt: now, attempts: 0 };
-    review.outcomes = results.map(({ name, average, count, texts }) => ({
+    review.outcomes = results.map(({ name, average, count }) => ({
       name,
       average,
       count,
-      texts: [...texts],
     }));
   }
   const card = record.slack?.card;
@@ -278,15 +277,16 @@ export function reviewProgress(
     eligible: review.eligible!.length,
   };
 }
-/** A closed review's per-winner results, for everyone who can watch the round. */
+/** A closed review's per-winner stars, for everyone who can watch the round. */
 export function reviewOutcomes(
   record: StoredSession,
 ): ReviewOutcome[] | undefined {
   const review = record.review;
   if (review?.status !== "closed" || !review.outcomes?.length) return;
-  return review.outcomes.map((outcome) => ({
-    ...outcome,
-    texts: [...outcome.texts],
+  return review.outcomes.map(({ name, average, count }) => ({
+    name,
+    average,
+    count,
   }));
 }
 export function reviewDeadline(record: StoredSession): number | undefined {

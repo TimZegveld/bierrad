@@ -128,16 +128,15 @@ test("one strict ballot per person; the last vote closes, keeps no voter and era
   assert.equal(card.status, "pending");
   assert.equal(reviewDeadline(r), end + 1000);
   assert.throws(() => submitReview(r, first, "d1", { scores: [5], texts: [""] }, end + 2000), { code: "review_closed" });
-  // Once posted (or uncertain, or given up) the job's texts are gone too.
+  // Once posted (or uncertain, or given up) the texts are gone too.
   settleReviewJob(r.review!.job!, "posted");
   assert.deepEqual(r.review!.job!.results, []);
-  // The result page keeps the same anonymous outcome until the session ends.
+  assert.ok(!JSON.stringify(r).includes("snel"));
+  // The result page keeps only the stars, until the session ends.
   const dto = publicSession(r);
   assert.equal(dto.review, undefined);
-  assert.deepEqual(dto.reviewOutcomes, [
-    { name: winner.name, average: 4.5, count: 2, texts: ["<!channel> top & snel"] },
-  ]);
-  for (const secret of ["pseudo-", "U0000000", "mentionId"])
+  assert.deepEqual(dto.reviewOutcomes, [{ name: winner.name, average: 4.5, count: 2 }]);
+  for (const secret of ["pseudo-", "U0000000", "mentionId", "snel"])
     assert.ok(!JSON.stringify(dto).includes(secret), secret);
 });
 

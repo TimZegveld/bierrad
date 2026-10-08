@@ -218,10 +218,13 @@ export function ChannelBindPage({
           <p>Koppelen is hier nog niet ingesteld.</p>
         )}
         {beer ? (
-          <p className="helper">
-            Wie daarna <code>/bierrad</code> typt in het kanaal, start een
-            bierronde: standaard vandaag om 15:45 met twee halers.
-          </p>
+          <>
+            <p className="helper">
+              Wie daarna <code>/bierrad</code> typt in het kanaal, start een
+              bierronde: standaard vandaag om 15:45 met twee halers.
+            </p>
+            <RoundExplainer app="beer" />
+          </>
         ) : (
           <>
             <p className="helper">

@@ -3,6 +3,7 @@ import type {
   ClientRole,
   SessionCapabilities,
 } from "./models";
+import { drawable } from "./drawEngine";
 export function getCapabilities(
   role: ClientRole,
   session: BeerWheelSession,
@@ -18,8 +19,7 @@ export function getCapabilities(
     canStartDraw:
       control &&
       ["ready", "finished"].includes(session.state) &&
-      session.winnerCount >= 1 &&
-      session.winnerCount <= session.participants.length,
+      drawable(session),
     canReset: control && ["setup", "ready", "finished"].includes(session.state),
   };
 }

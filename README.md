@@ -130,7 +130,7 @@ Een hostcapability bestaat uit een willekeurige 128-bit locator plus een onafhan
 | `GET /api/socket` upgrade | Geldige host of kijker | Snapshotupdates; alleen pingberichten toegestaan |
 | `GET /api/channel` | Geldige beheer- of aanvraaglink van een kanaal-Koffierad | Status, standaardwachttijd en lopende ronde |
 | `POST /api/channel` | Idem; beheer alleen met beheerlink | `setDefaultMinutes`, `setReviews`, `rotateRequestLink`, `unbind`; met een persoonlijke link `review` en `logout`. Rondes starten alleen met `/koffierad`, `/waterrad` of `/koekrad`. |
-| `POST /slack/commands` | Uitsluitend met geldige handtekening van de Koffierad-app | `/koffierad [minuten]`, `/waterrad [minuten]` of `/koekrad [titel] [minuten]` start een koffie-, water- of koekronde in het gekoppelde kanaal |
+| `POST /slack/commands` | Uitsluitend met geldige handtekening van de Koffierad-app | `/koffierad [minuten]`, `/waterrad [minuten]` of `/koekrad [titel] [minuten]` start een koffie-, water- of koekronde in het gekoppelde kanaal, of haakt aan bij een wachtende ronde als Feestrad |
 | `POST /slack/bier-commands` | Uitsluitend met geldige handtekening van de Bierrad-app | `/bierrad [dag] [tijd] [aantal] [tekst]` plant een bierronde in het gekoppelde kanaal |
 
 HTTP gebruikt `Authorization: Bearer <capability>`. Browsers bieden bij WebSocket-upgrade `bierrad, auth.<capability>` als subprotocol aan; de server selecteert alleen `bierrad`. Geen capabilities in backend-URLs of querystrings. Commando's: `setParticipants` (namen, server maakt IDs), `setWinnerCount`, `setScheduledDraw` (ISO-tijd of null om te annuleren, optioneel met `spectatorCapability` om de kijklink vooraf in de Slack-thread te laten plaatsen), `startDraw`, `reset`, `endSession`. De client kan nooit officiële winnaars/instructies aanleveren. Backendrechten zijn bepalend; frontendcapabilities zijn alleen UX.
@@ -212,6 +212,19 @@ Het vierde rad: **wie haalt de koek, taart of bitterballen?** Net als het Waterr
 Bij een Koekrad maakt iedere menselijke reactie met `:naam-koek:` het vak van die naam groter, bijvoorbeeld `:alice-koek:`. Alice krijgt dan één extra lot: haar vak is twee keer zo groot en ze heeft twee keer zoveel kans. Vier mensen met `:alice-koek:` geven haar vak vijf loten. Het telt alleen als precies één 🍪-deelnemer exact zo heet (hoofdletters maken niet uit); ontbreekt de naam of komt hij twee keer voor, dan doet de reactie niets. Een koekemoji meldt niemand aan, ook de plaatser niet, en geeft geen extra reviewstem. Verwijderen van de reactie maakt het vak bij de volgende controle weer kleiner. Voor een volledige naam gebruik je underscores, bijvoorbeeld `:alice_bakker-koek:` voor `Alice Bakker`.
 
 Wint Alice, dan kiest de server tegelijk met de trekking één van haar loten. Was dat een koekemoji, dan zet hij **Mede mogelijk gemaakt door... @degene die reageerde** in de threaduitslag; was het haar eigen 🍪, dan niet. Bier-, koffie- en waterreacties veranderen niet.
+
+## Feestrad 🌈
+
+Soms wil je koffie én water, of koffie én taart. Typ dan gewoon het tweede commando terwijl de eerste ronde nog wacht: een `/waterrad` of `/koekrad taart` tijdens een koffieronde haakt aan bij die ronde en het **Koffierad wordt een Feestrad**. Alle drie de raden kunnen samen.
+- Er komt geen tweede oproep. De bot zet de nieuwe emoji onder de bestaande oproep, past de oproep aan zodat hij alle doelen noemt, en kondigt het aan in de thread, zichtbaar voor het hele kanaal.
+- Je doet mee door te klikken op wat je wilt halen. Meedoen voor meer doelen mag.
+- De ronde houdt haar starttijd. De minuten van het tweede commando tellen niet.
+- Aanhaken kan tot een minuut voor de start, en ieder rad maar één keer.
+- Elke aanhaking telt mee voor de daglimiet.
+- Bij de start kiest de server in één trekking per doel één haler, en **niemand wint twee keer**. Is iemand de enige voor water, dan haalt die het water en kiezen de andere raden uit de rest. Is er voor een doel niemand meer over, dan blijft dat rad stil.
+- Het Bierrad doet niet mee: dat is een aparte app.
+
+Zie de [securityreview](SECURITY.md#feestrad--reviewed-exception-2026-10-13).
 
 ## Linkvoorbeelden
 

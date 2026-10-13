@@ -1,6 +1,7 @@
 import type { ReviewOutcome, ReviewProgress } from "./reviews";
 import type { WheelVariant } from "./variant";
 import type {
+  DrawGoal,
   DrawInstruction,
   DrawState,
   Participant,
@@ -17,6 +18,8 @@ export interface PublicBeerWheelSession {
   title?: string;
   participants: readonly Participant[];
   winnerCount: number;
+  /** Feestrad rounds: one wheel per goal, each with its own pool. */
+  goals?: readonly DrawGoal[];
   state: DrawState;
   winnerIds: readonly string[];
   activeDraw?: DrawInstruction;

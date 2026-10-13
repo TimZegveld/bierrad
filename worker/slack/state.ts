@@ -1,6 +1,8 @@
-import { reactionVariant, themeFor } from "../../shared/variant";
+import { reactionVariant, themeFor, themes } from "../../shared/variant";
+import { feestCopy, type RoundGoal } from "../../shared/channel";
 import type { CallOutcome } from "../channel/messages";
-import { createSession } from "../../src/domain/drawEngine";
+import { createSession, withGoals } from "../../src/domain/drawEngine";
+import type { DrawGoal } from "../../src/domain/models";
 import { randomIndex } from "../../src/utils/random";
 import type { StoredSession } from "../session";
 import { RequestError } from "../session";
@@ -34,6 +36,8 @@ export interface SlackJob {
   sponsorIds?: (string | null)[];
   /** Koekrad rounds only: the round's validated word. */
   title?: string;
+  /** Feestrad only: per winner, the goal they won. */
+  goals?: RoundGoal[];
   status: "pending" | "posting" | "posted" | "failed" | "uncertain";
   readyAt: number;
   attemptedAt?: number;
@@ -91,6 +95,40 @@ export function participantSlackIds(state: SlackState): Map<string, string> {
     Object.entries(state.mapping).map(([slackId, id]) => [id, slackId]),
   );
 }
+/**
+ * Koekrad nominations: per signed-up Slack user, the reactors whose
+ * `:naam-koek:` names them. Only the unique exact name match among actual
+ * cookie signups, before display suffixes; missing or ambiguous names are ignored.
+ */
+function nominations(
+  people: SlackPerson[],
+  bakers: SlackPerson[],
+): Record<string, string[]> {
+  const sponsors: Record<string, string[]> = {};
+  const seen = new Set<string>();
+  for (const p of people.filter((p) => p.cookieReaction)) {
+    const name = cookieName(p.cookieReaction);
+    if (!name) throw new RequestError(400, "slack_response");
+    const key = `${p.cookieReaction}:${p.slackId}`;
+    if (seen.has(key)) throw new RequestError(400, "slack_response");
+    seen.add(key);
+    const matches = bakers.filter((person) =>
+      person.name.toLocaleLowerCase("nl") === name.toLocaleLowerCase("nl"));
+    if (matches.length === 1)
+      (sponsors[matches[0].slackId] ??= []).push(p.slackId);
+  }
+  return sponsors;
+}
+function uniqueName(raw: string, used: Set<string>): string {
+  let name = raw;
+  let suffix = 1;
+  while (used.has(name.toLocaleLowerCase("nl"))) {
+    const label = ` (${++suffix})`;
+    name = raw.slice(0, 32 - label.length).trimEnd() + label;
+  }
+  used.add(name.toLocaleLowerCase("nl"));
+  return name;
+}
 /** Stable opaque identity; numbered display labels distinguish equal names without Slack IDs. */
 export function reconcile(
   record: StoredSession,
@@ -98,6 +136,8 @@ export function reconcile(
   people: SlackPerson[],
   now: number,
 ) {
+  if (record.goals)
+    return reconcileGoals(record, source, people, now, record.goals);
   const state = record.slack!;
   const oldIds = new Set([
     ...Object.values(state.mapping),
@@ -107,34 +147,13 @@ export function reconcile(
   const used = new Set(manual.map((p) => p.name.toLocaleLowerCase("nl")));
   const mapping: Record<string, string> = {};
   const own = people.filter((p) => !p.cookieReaction);
-  const sponsors: Record<string, string[]> = {};
-  if (source.reactionName === "cookie") {
-    const seen = new Set<string>();
-    for (const p of people.filter((p) => p.cookieReaction)) {
-      const name = cookieName(p.cookieReaction);
-      if (!name) throw new RequestError(400, "slack_response");
-      const key = `${p.cookieReaction}:${p.slackId}`;
-      if (seen.has(key)) throw new RequestError(400, "slack_response");
-      seen.add(key);
-      // Only the unique exact name match among actual cookie signups, before
-      // display suffixes; missing or ambiguous names are ignored.
-      const matches = own.filter((person) =>
-        person.name.toLocaleLowerCase("nl") === name.toLocaleLowerCase("nl"));
-      if (matches.length === 1)
-        (sponsors[matches[0].slackId] ??= []).push(p.slackId);
-    }
-  }
+  const sponsors =
+    source.reactionName === "cookie" ? nominations(people, own) : {};
   const cookieSponsors: Record<string, string[]> = {};
   const imported = own.map((p) => {
     const id = state.mapping[p.slackId] ?? crypto.randomUUID();
     mapping[p.slackId] = id;
-    let name = p.name;
-    let suffix = 1;
-    while (used.has(name.toLocaleLowerCase("nl"))) {
-      const label = ` (${++suffix})`;
-      name = p.name.slice(0, 32 - label.length).trimEnd() + label;
-    }
-    used.add(name.toLocaleLowerCase("nl"));
+    const name = uniqueName(p.name, used);
     const extra = sponsors[p.slackId];
     if (!extra) return { id, name };
     cookieSponsors[id] = extra.sort();
@@ -155,6 +174,102 @@ export function reconcile(
   state.count = imported.length;
   state.syncedAt = new Date(now).toISOString();
 }
+/**
+ * A Feestrad: everyone who joined any goal is one participant, once; each
+ * goal's pool lists who reacted with its emoji. Nominations only size the
+ * slices on the koek wheel.
+ */
+function reconcileGoals(
+  record: StoredSession,
+  source: SlackSource,
+  people: SlackPerson[],
+  now: number,
+  goals: readonly RoundGoal[],
+) {
+  const state = record.slack!;
+  const signups = people
+    .filter((p) => !p.cookieReaction && p.reaction)
+    .sort((a, b) => a.slackId.localeCompare(b.slackId));
+  const sponsors = nominations(
+    people,
+    signups.filter((p) => p.reaction === "cookie"),
+  );
+  const used = new Set<string>();
+  const mapping: Record<string, string> = {};
+  const participants: { id: string; name: string }[] = [];
+  for (const p of signups) {
+    if (mapping[p.slackId]) continue;
+    const id = state.mapping[p.slackId] ?? crypto.randomUUID();
+    mapping[p.slackId] = id;
+    participants.push({ id, name: uniqueName(p.name, used) });
+  }
+  if (participants.length > 100) throw new RequestError(400, "slack_too_many");
+  const cookieSponsors: Record<string, string[]> = {};
+  const pools = goals.map((goal): DrawGoal => {
+    const reaction = themes[goal.variant].reaction;
+    const joined = signups.filter((p) => p.reaction === reaction);
+    const weights = joined.map((p) => {
+      const extra = goal.variant === "cookie" ? sponsors[p.slackId] : undefined;
+      if (!extra) return 1;
+      cookieSponsors[mapping[p.slackId]] = extra.sort();
+      return 1 + extra.length;
+    });
+    return {
+      variant: goal.variant,
+      ...(goal.title ? { title: goal.title } : {}),
+      participantIds: joined.map((p) => mapping[p.slackId]),
+      ...(weights.some((w) => w > 1) ? { weights } : {}),
+    };
+  });
+  record.session = withGoals(
+    createSession(record.session.id, participants, 1),
+    pools,
+  );
+  state.source = source;
+  state.mapping = mapping;
+  if (Object.keys(cookieSponsors).length) state.cookieSponsors = cookieSponsors;
+  else delete state.cookieSponsors;
+  delete state.cookieEntries;
+  state.count = participants.length;
+  state.syncedAt = new Date(now).toISOString();
+}
+/** The reactions a Feestrad counts, one per goal; undefined for one goal. */
+export function roundReactions(record: StoredSession) {
+  return record.goals?.map((g) => themes[g.variant].reaction);
+}
+/**
+ * A waiting round gains a goal: it becomes (or grows as) a Feestrad. Everyone
+ * already in keeps their goal; the new wheel starts empty until the next read
+ * of the reactions.
+ */
+export function addGoal(record: StoredSession, goal: RoundGoal) {
+  const s = record.session;
+  const first: RoundGoal = {
+    variant: record.variant as RoundGoal["variant"],
+    ...(record.title ? { title: record.title } : {}),
+  };
+  const pools: DrawGoal[] = s.goals
+    ? [...s.goals]
+    : [
+        {
+          ...first,
+          participantIds: s.participants.map((p) => p.id),
+          ...(s.participants.some((p) => (p.weight ?? 1) > 1)
+            ? { weights: s.participants.map((p) => p.weight ?? 1) }
+            : {}),
+        },
+      ];
+  pools.push({ ...goal, participantIds: [] });
+  record.session = withGoals(
+    createSession(
+      s.id,
+      s.participants.map(({ weight: _, ...p }) => p),
+      1,
+    ),
+    pools,
+  );
+  record.goals = [...(record.goals ?? [first]), { ...goal }];
+}
 export function queueResult(record: StoredSession) {
   const draw = record.session.activeDraw,
     slack = record.slack;
@@ -162,7 +277,11 @@ export function queueResult(record: StoredSession) {
   const identities = participantSlackIds(slack);
   // One ticket per slice unit, drawn once here as the draw starts: the
   // winner's own signup credits nobody, a nomination ticket its reactor.
-  const sponsorOf = (winnerId: string) => {
+  const goalOf = (wheelIndex: number) => record.goals?.[wheelIndex];
+  const cookie = (wheelIndex: number) =>
+    (goalOf(wheelIndex)?.variant ?? record.variant) === "cookie";
+  const sponsorOf = (winnerId: string, wheelIndex: number) => {
+    if (!cookie(wheelIndex)) return null;
     const sponsors = slack.cookieSponsors?.[winnerId] ?? [];
     const ticket = sponsors.length ? randomIndex(1 + sponsors.length) : 0;
     return ticket ? sponsors[ticket - 1] : null;
@@ -175,10 +294,13 @@ export function queueResult(record: StoredSession) {
         record.session.participants.find((p) => p.id === spin.winnerId)!.name,
     ),
     mentionIds: draw.spins.map((spin) => identities.get(spin.winnerId) ?? null),
-    ...(slack.source.reactionName === "cookie" ? {
-      sponsorIds: draw.spins.map((spin) => sponsorOf(spin.winnerId)),
+    ...(draw.spins.some((spin) => cookie(spin.wheelIndex)) ? {
+      sponsorIds: draw.spins.map((spin) => sponsorOf(spin.winnerId, spin.wheelIndex)),
     } : {}),
     ...(record.title ? { title: record.title } : {}),
+    ...(record.goals
+      ? { goals: draw.spins.map((spin) => ({ ...goalOf(spin.wheelIndex)! })) }
+      : {}),
     status: "pending",
     readyAt: Math.max(
       ...draw.spins.map((s) => Date.parse(s.startAt) + s.durationMs),
@@ -190,6 +312,12 @@ export function queueResult(record: StoredSession) {
       names: [...slack.job.names],
       mentionIds: [...slack.job.mentionIds!],
       participants: draw.participantIds.length,
+      ...(record.goals
+        ? {
+            goals: record.goals.map((g) => ({ ...g })),
+            wheels: draw.spins.map((spin) => spin.wheelIndex),
+          }
+        : {}),
       startAt: Date.parse(record.scheduledDraw.startAt),
       status: "pending",
       readyAt: slack.job.readyAt,
@@ -214,8 +342,23 @@ export function queueChannelNotice(
 }
 export function resultBody(job: SlackJob) {
   const theme = themeFor(reactionVariant(job.source.reactionName), job.title);
-  const heading = `${theme.icon} Het rad heeft gesproken!\n`;
-  const ending = `${job.names.length === 1 ? "Jij mag" : "Jullie mogen"} ${theme.drink} halen!`;
+  const feest = job.goals?.length === job.names.length ? job.goals : undefined;
+  const heading = feest
+    ? `${feestCopy.icon} Het ${feestCopy.name} heeft gesproken!\n`
+    : `${theme.icon} Het rad heeft gesproken!\n`;
+  const ending = feest
+    ? "Niemand hoeft er twee te halen. Proost!"
+    : `${job.names.length === 1 ? "Jij mag" : "Jullie mogen"} ${theme.drink} halen!`;
+  // A Feestrad names every winner on their own line, with their goal.
+  const before = (index: number) => {
+    const goal = feest?.[index];
+    if (!goal) return index ? " · " : "";
+    return `${index ? "\n" : ""}${themeFor(goal.variant, goal.title).icon} `;
+  };
+  const after = (index: number) => {
+    const goal = feest?.[index];
+    return goal ? ` haalt ${themeFor(goal.variant, goal.title).drink}` : "";
+  };
   const escape = (text: string) =>
     text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   // Only server-resolved identities become mentions. Names remain literal text.
@@ -226,7 +369,9 @@ export function resultBody(job: SlackJob) {
       : null;
   });
   const sponsors = job.names.map((_, index) => {
-    const id = job.source.reactionName === "cookie" ? job.sponsorIds?.[index] : null;
+    const cookie =
+      (job.goals?.[index]?.variant ?? reactionVariant(job.source.reactionName)) === "cookie";
+    const id = cookie ? job.sponsorIds?.[index] : null;
     return id && /^[UW][A-Z0-9]{8,20}$/.test(id) && id !== "USLACKBOT" ? id : null;
   });
   const credit = sponsors.filter((id): id is string => !!id)
@@ -234,18 +379,20 @@ export function resultBody(job: SlackJob) {
   // Slack derives notifications from the fallback text, so the same frozen
   // identities appear there as <@U…>; everything else is escaped.
   const text = `${escape(heading)}${job.names
-    .map((name, index) => (ids[index] ? `<@${ids[index]}>` : escape(name)))
-    .join(" · ")}${escape(`\n${ending}`)}${credit}`;
+    .map((name, index) =>
+      `${escape(before(index))}${ids[index] ? `<@${ids[index]}>` : escape(name)}${escape(after(index))}`)
+    .join("")}${escape(`\n${ending}`)}${credit}`;
   const elements: (
     | { type: "text"; text: string }
     | { type: "user"; user_id: string }
   )[] = [{ type: "text", text: heading }];
   job.names.forEach((name, index) => {
-    if (index) elements.push({ type: "text", text: " · " });
+    if (before(index)) elements.push({ type: "text", text: before(index) });
     const id = ids[index];
     elements.push(
       id ? { type: "user", user_id: id } : { type: "text", text: name },
     );
+    if (after(index)) elements.push({ type: "text", text: after(index) });
   });
   elements.push({
     type: "text",

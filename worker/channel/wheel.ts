@@ -5,6 +5,9 @@ import {
   channelApps,
   DEFAULT_BEER_WINNERS,
   DEFAULT_ROUND_MINUTES,
+  feestCopy,
+  isGoalVariant,
+  JOIN_CUTOFF_MS,
   MAX_ROUNDS_PER_DAY,
   roundCopy,
   roundStartAt,
@@ -14,6 +17,7 @@ import {
   type ChannelCommandResult,
   type ChannelStatus,
   type ChannelVariant,
+  type RoundGoal,
 } from "../../shared/channel";
 import { roundTitle, themes } from "../../shared/variant";
 import {
@@ -43,8 +47,19 @@ import {
   slackEnvironment,
   type SlackSecrets,
 } from "../slack/access";
-import { postMessage, REMINDER_LEAD_MS } from "../slack/state";
-import { beerCallBody, boundBody, callBody } from "./messages";
+import {
+  clock,
+  postMessage,
+  REMINDER_LEAD_MS,
+  updateMessage,
+} from "../slack/state";
+import {
+  beerCallBody,
+  boundBody,
+  callBody,
+  feestCallBody,
+  joinBody,
+} from "./messages";
 import { slashHelp, validChannelName } from "./slash";
 import { cleanIntro, MIN_BEER_LEAD_MS } from "./beer";
 
@@ -87,6 +102,12 @@ interface Round {
    */
   spectatorCapability: string;
   reviews?: boolean;
+  /** The bot's own call message, so a joining goal can rewrite it. */
+  callTs?: string;
+  /** A Feestrad: every goal in wheel order, the first being `variant`. */
+  goals?: RoundGoal[];
+  /** While a goal joins: no second one until this time. */
+  joining?: number;
 }
 /** A personal link from Sign in with Slack: no identity, only a pseudonym. */
 interface Member {
@@ -184,11 +205,14 @@ function roundError(
   requested: ChannelVariant,
   running: ChannelVariant,
   runningTitle?: string,
+  goals?: readonly RoundGoal[],
 ): string | undefined {
   const icon = themes[requested].icon;
   const { name, bot } = channelApps[channelApp(requested)];
   switch (code) {
     case "round_active":
+      if (goals)
+        return `${feestCopy.icon} Er loopt al een ${feestCopy.round} in dit kanaal, met ${goals.map((g) => themes[g.variant].icon).join(" ")}. Klik onder de oproep op wat je wilt halen.`;
       return `${themes[running].icon} Er loopt al een ${roundCopy(running, runningTitle).round} in dit kanaal. Klik op ${themes[running].icon} onder de oproep om mee te doen.`;
     case "round_limit":
       return `${icon} Vandaag zijn er al genoeg rondes gestart in dit kanaal. Morgen weer!`;
@@ -418,6 +442,9 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
               active: blocking(round, now, settledId),
               ...(round.reviews ? { reviews: true } : {}),
               ...(round.title ? { title: round.title } : {}),
+              ...(round.goals
+                ? { goals: round.goals.map((g) => ({ ...g })) }
+                : {}),
             },
           }
         : {}),
@@ -700,6 +727,19 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
     const chosen = request.minutes ?? binding.defaultMinutes;
     if (variant !== "beer" && !validRoundMinutes(chosen))
       return slashHelp(variant);
+    // Another wheel of the Koffierad joins a waiting round: one Feestrad.
+    const running = binding.round;
+    if (
+      isGoalVariant(variant) &&
+      running?.status === "open" &&
+      running.callTs &&
+      Date.now() < running.endsAt &&
+      !(running.goals ?? [{ variant: running.variant ?? "coffee" }]).some(
+        (g) => g.variant === variant,
+      ) &&
+      blocking(running, Date.now(), await this.settledRoundId())
+    )
+      return this.joinRound(request);
     try {
       await this.startRound(chosen, request);
       return null;
@@ -712,10 +752,138 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
             variant,
             running?.variant ?? "coffee",
             running?.title,
+            running?.goals,
           )) ||
         `${icon} Het ${own.name} is nu niet bereikbaar. Probeer het zo opnieuw.`
       );
     }
+  }
+  /**
+   * Adds a goal to the waiting round: the session first (so the draw includes
+   * it), then a broadcast in the call's thread, the new emoji and the rewritten
+   * call. A refused announcement undoes the goal; an uncertain one keeps it,
+   * since people may already see it. Counts toward the daily limit.
+   */
+  private async joinRound(request: SlashRound): Promise<string | null> {
+    const variant = request.variant;
+    const icon = themes[variant].icon;
+    const own = channelApps[channelApp(variant)];
+    const unreachable = `${icon} Het ${own.name} is nu niet bereikbaar. Probeer het zo opnieuw.`;
+    if (!isGoalVariant(variant)) return unreachable;
+    // Validated again: only the Koekrad carries a word.
+    const title = variant === "cookie" ? roundTitle(request.title) : undefined;
+    const spectator = this.read()?.round?.spectatorCapability;
+    const sessionLocator = spectator ? await wordLocator(spectator) : undefined;
+    const env = this.slack(),
+      app = frontend(this.env);
+    const binding = this.read();
+    const round = binding?.round;
+    const now = Date.now();
+    if (
+      !binding ||
+      !round?.callTs ||
+      !sessionLocator ||
+      round.spectatorCapability !== spectator ||
+      !loginConfigured(env) ||
+      !app
+    )
+      return unreachable;
+    if ((round.joining ?? 0) > now)
+      return `${icon} Er haakt net al een rad aan bij deze ronde. Probeer het zo opnieuw.`;
+    const tooLate = `${icon} Te laat om aan te haken: het rad draait om ${clock.format(round.startAt)}. Na de trekking kun je een nieuwe ronde starten.`;
+    if (now >= round.startAt - JOIN_CUTOFF_MS) return tooLate;
+    if (now - binding.window >= DAY_MS) {
+      binding.window = now;
+      binding.rounds = 0;
+    }
+    if (binding.rounds >= MAX_ROUNDS_PER_DAY)
+      return roundError("round_limit", variant, variant)!;
+    round.joining = now + 30000;
+    this.save(binding);
+    await this.ctx.storage.sync();
+    const id = round.id;
+    const release = (goals?: RoundGoal[]) => {
+      const current = this.read();
+      if (current?.round?.id !== id) return;
+      delete current.round.joining;
+      if (goals) {
+        current.round.goals = goals;
+        current.rounds++;
+        current.expiresAt = Math.max(current.expiresAt, Date.now() + CHANNEL_IDLE_TTL_MS);
+      }
+      this.save(current);
+    };
+    const session = this.env.SESSIONS.getByName(sessionLocator);
+    let added: Awaited<ReturnType<typeof session.addChannelGoal>>;
+    try {
+      added = await session.addChannelGoal({
+        variant,
+        ...(title ? { title } : {}),
+      });
+    } catch {
+      release();
+      return unreachable;
+    }
+    if ("code" in added) {
+      release();
+      if (added.code === "too_late") return tooLate;
+      if (added.code === "present" || added.code === "full")
+        return roundError("round_active", variant, round.variant ?? "coffee", round.title, round.goals)!;
+      return unreachable;
+    }
+    const goals = added.goals;
+    const api = new SlackApiClient(env.SLACK_BOT_TOKEN!);
+    const posted = await postMessage(
+      api,
+      binding.channelId,
+      joinBody(binding.channelId, round.callTs, goals, round.startAt),
+    );
+    if (posted.status === "failed") {
+      try {
+        await session.removeChannelGoal(variant);
+      } catch {
+        // The session then still draws the goal; the call names it below.
+      }
+      release();
+      return roundError("slack_post_failed", variant, variant)!;
+    }
+    try {
+      await api.call("reactions.add", {
+        channel: binding.channelId,
+        timestamp: round.callTs,
+        name: themes[variant].reaction,
+      });
+    } catch {
+      // Not essential: people can still add the emoji themselves.
+    }
+    // The call names every goal from now on, with the same link as before.
+    const route = channelApps[binding.app ?? "coffee"].route;
+    const channelPage = binding.requestCapability
+      ? `${app.href}#/${route}/${binding.requestCapability}`
+      : undefined;
+    const viewLink = binding.viewerCapability
+      ? `${app.href}#/${route}/${binding.viewerCapability}`
+      : undefined;
+    const link =
+      round.reviews && channelPage
+        ? channelPage
+        : (viewLink ?? channelPage ?? `${app.href}#/live/${round.spectatorCapability}`);
+    // Best effort: the announcement in the thread already names the new emoji.
+    await updateMessage(
+      api,
+      feestCallBody(
+        binding.channelId,
+        round.callTs,
+        link,
+        round.reviews ? "Open de ronde" : "Kijk live mee",
+        round.startAt,
+        goals,
+      ),
+    );
+    release(goals);
+    return posted.status === "uncertain"
+      ? roundError("slack_uncertain", variant, variant)!
+      : null;
   }
   /**
    * Claims the round before any Slack call, posts the call, adds the first ☕,
@@ -900,6 +1068,7 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
     const current = this.read();
     if (current?.round?.id === id) {
       current.round.status = "open";
+      current.round.callTs = posted.postedMessageTs;
       this.save(current);
       await this.arm(current);
     }

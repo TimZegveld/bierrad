@@ -698,8 +698,9 @@ test(
       assert.equal(waterStatus.variant, "water");
       assert.equal(waterStatus.round.variant, "water");
       assert.equal(((await status(watcher)) as { variant?: string }).variant, "water");
-      // One round at a time per channel, whatever it fetches; the reply names the running one.
-      const waterBusy = (await (await slash({ text: "3" })).json()) as { text: string };
+      // The same wheel twice is refused; the reply names the running round.
+      // (Another wheel joins it as a Feestrad: feestrad.test.ts.)
+      const waterBusy = (await (await slash({ command: "/waterrad", text: "3" })).json()) as { text: string };
       assert.match(waterBusy.text, /^💧 Er loopt al een waterronde/);
       const waterViewer = waterStatus.round.spectatorCapability;
       const waterSession = sessions.get(sessions.idFromName(await wordLocator(waterViewer))) as unknown as {
@@ -754,7 +755,7 @@ test(
       assert.equal(cookieStatus.round.title, "taart");
       assert.equal(((await status(watcher)) as { round?: { title?: string } }).round?.title, "taart");
       // A busy channel names the running round by its word.
-      const cookieBusy = (await (await slash({ command: "/waterrad" })).json()) as { text: string };
+      const cookieBusy = (await (await slash({ command: "/koekrad", text: "brood" })).json()) as { text: string };
       assert.match(cookieBusy.text, /^🍪 Er loopt al een taartronde/);
       const cookieViewer = cookieStatus.round.spectatorCapability;
       const cookieSession = sessions.get(sessions.idFromName(await wordLocator(cookieViewer))) as unknown as {

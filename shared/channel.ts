@@ -126,7 +126,51 @@ export interface ChannelRound {
   reviews?: boolean;
   /** Koekrad only: the word from `/koekrad <titel>`; display only. */
   title?: string;
+  /**
+   * A Feestrad: every goal of the round in wheel order, the first being the
+   * round's own variant. Absent while the round has one goal.
+   */
+  goals?: RoundGoal[];
 }
+/** One goal of a Feestrad round; display only, never authorizes. */
+export interface RoundGoal {
+  variant: GoalVariant;
+  /** Koekrad only: the round's validated word. */
+  title?: string;
+}
+/** The wheels that can grow into a Feestrad: the Koffierad's own. */
+export type GoalVariant = Extract<ChannelVariant, "coffee" | "water" | "cookie">;
+export function isGoalVariant(value: unknown): value is GoalVariant {
+  return value === "coffee" || value === "water" || value === "cookie";
+}
+/** Goals of a Feestrad round, each kind once. */
+export const MAX_ROUND_GOALS = 3;
+/**
+ * Another `/waterrad` or `/koekrad` may join a waiting round until this long
+ * before its start: time to react, and the final check stays undisturbed.
+ */
+export const JOIN_CUTOFF_MS = 60000;
+/** Validated goals, or undefined: known kinds, each once, a word only for koek. */
+export function validGoals(raw: unknown): RoundGoal[] | undefined {
+  if (!Array.isArray(raw) || raw.length < 2 || raw.length > MAX_ROUND_GOALS)
+    return;
+  const goals: RoundGoal[] = [];
+  for (const goal of raw) {
+    if (!goal || typeof goal !== "object" || !isGoalVariant(goal.variant))
+      return;
+    if (goals.some((g) => g.variant === goal.variant)) return;
+    const title = goal.variant === "cookie" ? roundTitle(goal.title) : undefined;
+    if (goal.title !== undefined && !title) return;
+    goals.push({ variant: goal.variant, ...(title ? { title } : {}) });
+  }
+  return goals;
+}
+/** Fixed Feestrad copy; display only. */
+export const feestCopy = {
+  name: "Feestrad",
+  icon: "🌈",
+  round: "feestronde",
+} as const;
 export interface ChannelStatus {
   /** `member`: a personal link from Sign in with Slack; requests rounds and reviews. */
   role: "admin" | "requester" | "member";

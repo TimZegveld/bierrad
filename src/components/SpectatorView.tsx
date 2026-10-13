@@ -7,7 +7,7 @@ import {
   type CSSProperties,
 } from "react";
 import { useTheme } from "../Theme";
-import { localHash } from "../../shared/variant";
+import { localHash, themes } from "../../shared/variant";
 import type { BeerWheelSession } from "../domain/models";
 import type { LiveInfo } from "../sessions/SessionController";
 import { sessionWinners, wheelCount } from "../domain/drawEngine";
@@ -127,7 +127,7 @@ export function SpectatorView({
       </main>
       <div className="spectator-status" aria-live="polite">
         {view.phase === "result" ? (
-          <SpectatorResult winners={sessionWinners(session)} />
+          <SpectatorResult winners={sessionWinners(session)} session={session} />
         ) : view.phase === "empty" ? (
           <>
             {view.skipped ? (
@@ -202,7 +202,10 @@ function SpectatorHeader({ status }: { status: LiveInfo["status"] }) {
       >
         ⛶
       </button>
-      <a href={localHash(theme.variant)}>Eigen {theme.name}</a>
+      {/* There is no local Feestrad: the link opens the round's own wheel. */}
+      <a href={localHash(theme.variant)}>
+        Eigen {theme.feest ? themes[theme.variant].name : theme.name}
+      </a>
     </div>
   );
 }

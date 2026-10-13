@@ -1,5 +1,6 @@
 import type { ScheduledDraw } from "../../shared/protocol";
-import type { BeerWheelSession } from "./models";
+import type { BeerWheelSession, Participant } from "./models";
+import { themeFor } from "../../shared/variant";
 /** Spectators see the countdown take over the screen this long before a planned start. */
 export const COUNTDOWN_LEAD_MS = 10000;
 export type SpectatorPhase =
@@ -96,6 +97,27 @@ export function countLabel(
 export function joinNames(names: readonly string[]): string {
   if (names.length < 2) return names[0] ?? "";
   return `${names.slice(0, -1).join(", ")} & ${names[names.length - 1]}`;
+}
+/**
+ * Feestrad: per winner their goal, from the wheel they won, e.g.
+ * { icon: "☕", line: "Bob haalt koffie" }. Undefined outside a Feestrad.
+ */
+export function feestLines(
+  session: BeerWheelSession,
+  winners: readonly Participant[],
+): { id: string; icon: string; line: string }[] | undefined {
+  const goals = session.goals;
+  if (!goals || goals.length < 2) return;
+  return winners.map((winner) => {
+    const spin = session.activeDraw?.spins.find((s) => s.winnerId === winner.id);
+    const goal = spin ? goals[spin.wheelIndex] : undefined;
+    const theme = goal ? themeFor(goal.variant, goal.title) : undefined;
+    return {
+      id: winner.id,
+      icon: theme?.icon ?? "🎉",
+      line: theme ? `${winner.name} haalt ${theme.drink}` : winner.name,
+    };
+  });
 }
 /** Default grid before the stage has been measured. */
 export function wheelColumns(count: number): number {

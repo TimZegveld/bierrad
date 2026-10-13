@@ -6,6 +6,7 @@ import {
   type ReviewProgress,
 } from "../shared/reviews";
 import { RequestError, type StoredSession } from "./session";
+import type { RoundGoal } from "../shared/channel";
 import { participantSlackIds } from "./slack/state";
 
 /** Voting opens this long after the last reveal. */
@@ -32,6 +33,8 @@ export interface RoundReview {
     /** Server-frozen Slack identity; only these winners can be reviewed. */
     mentionId: string | null;
     pseudonym: string | null;
+    /** Feestrad only: the goal of the wheel this winner won. */
+    goal?: RoundGoal;
   }[];
   /** Pseudonyms of everyone who may still or already did vote. */
   eligible?: string[];
@@ -102,11 +105,13 @@ export function openReview(
   review.opensAt = times.opensAt;
   review.winners = draw.spins.map((spin) => {
     const slackId = slackIds.get(spin.winnerId) ?? null;
+    const goal = record.goals?.[spin.wheelIndex];
     return {
       name: record.session.participants.find((p) => p.id === spin.winnerId)!
         .name,
       mentionId: slackId,
       pseudonym: pseudonymOf(spin.winnerId),
+      ...(goal ? { goal: { ...goal } } : {}),
     };
   });
   const ratable = review.winners.filter((w) => w.mentionId && w.pseudonym);
@@ -153,6 +158,7 @@ export function reviewBallot(
     drawId: review.drawId!,
     closesAt: new Date(review.closesAt!).toISOString(),
     winners: ballotWinners(review, pseudonym).map((w) => ({
+      ...(w.goal ? { goal: { ...w.goal } } : {}),
       index: w.index,
       name: w.name,
     })),

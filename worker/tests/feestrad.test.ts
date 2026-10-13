@@ -10,6 +10,7 @@ import { addGoal, queueResult, reconcile, resultBody } from "../slack/state";
 import { newSession, publicSession, type StoredSession } from "../session";
 import { feestCallBody, joinBody, settledCallBody } from "../channel/messages";
 import { startDraw } from "../../src/domain/drawEngine";
+import { openReview, reviewBallot } from "../reviews";
 import { validGoals, type ChannelCommandResult } from "../../shared/channel";
 import type { PublicBeerWheelSession } from "../../shared/protocol";
 
@@ -162,6 +163,19 @@ test("the joint draw gives each goal its own winner; the result names their goal
   const settled = settledCallBody("C00000001", source.parentMessageTs, now, "coffee", card, undefined, undefined, undefined, r.goals);
   assert.match(settled.text, /^🌈 Feestronde om \d\d:\d\d\n☕ Bob haalt koffie\n💧 Alice haalt water\n🍪 Carol haalt taart$/);
   assert.ok(JSON.stringify(settled.blocks).includes('"user_id":"U00000002"'));
+});
+
+test("the review ballot labels every haler with their goal", () => {
+  const r = drawnFeest();
+  r.review = { minutes: 15, key: "synthetic", link: "https://example.test/", status: "waiting" };
+  const pseudonyms = new Map(Object.keys(r.slack!.mapping).map((id) => [id, `p-${id}`]));
+  openReview(r, pseudonyms);
+  const at = r.review.opensAt! + 1;
+  const ballot = reviewBallot(r, "p-U00000002", at)!;
+  assert.deepEqual(ballot.winners, [
+    { index: 1, name: "Alice", goal: { variant: "water" } },
+    { index: 2, name: "Carol", goal: { variant: "cookie", title: "taart" } },
+  ]);
 });
 
 test("a goal nobody is left for says so in the settled call", () => {

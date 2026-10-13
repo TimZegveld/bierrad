@@ -203,10 +203,11 @@ export function ephemeral(text: string): Response {
 }
 export function slashHelp(variant: ChannelVariant): string {
   const { command, round } = channelCopy[variant];
+  const feest = ` Loopt er al een wachtende ronde met een ander rad, dan haakt dit rad aan en wordt het een 🌈 Feestrad.`;
   if (variant === "beer")
     return `${themes.beer.icon} Gebruik \`${command}\` voor een ${round} vandaag om 15.45, of bijvoorbeeld \`${command} 16.00\`, \`${command} vrijdag 15.45 3\` (drie halers) of \`${command} 10-10 16.30\`. Wat erachter komt, staat als eigen tekst boven de oproep: emoji en *vet* mogen, tot ${MAX_INTRO_LENGTH} tekens.`;
   return variant === "cookie"
 
-    ? `${themes[variant].icon} Gebruik \`${command}\` om een ${round} te starten met de standaardwachttijd van dit kanaal, of bijvoorbeeld \`${command} taart 10\` voor een taartronde na 1 tot 30 minuten. De titel is één woord van 2 tot 20 letters.`
-    : `${themes[variant].icon} Gebruik \`${command}\` om een ${round} te starten met de standaardwachttijd van dit kanaal, of \`${command} 10\` om het rad na 1 tot 30 minuten te laten draaien.`;
+    ? `${themes[variant].icon} Gebruik \`${command}\` om een ${round} te starten met de standaardwachttijd van dit kanaal, of bijvoorbeeld \`${command} taart 10\` voor een taartronde na 1 tot 30 minuten. De titel is één woord van 2 tot 20 letters.${feest}`
+    : `${themes[variant].icon} Gebruik \`${command}\` om een ${round} te starten met de standaardwachttijd van dit kanaal, of \`${command} 10\` om het rad na 1 tot 30 minuten te laten draaien.${feest}`;
 }

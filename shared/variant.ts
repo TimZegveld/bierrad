@@ -169,6 +169,39 @@ export const themes: Record<WheelVariant, WheelTheme> = {
   },
   cookie: cookieTheme(DEFAULT_COOKIE_WORD),
 };
+/**
+ * A Koffierad round that grew into a Feestrad (several goals): rainbow, over
+ * the top. Display only; each wheel still names its own goal.
+ */
+export const feestTheme: WheelTheme = {
+  name: "Feestrad",
+  icon: "🌈",
+  winnerIcon: "🎉",
+  drink: "feest",
+  reaction: "coffee",
+  slackApp: "coffee",
+  storage: "feestrad",
+  favicon: "./coffee-icon.svg",
+  badge: "Tijd voor een feestronde",
+  question: "Wie haalt wat?",
+  crew: "feestploeg",
+  brigade: "feestbrigade",
+  footer: "Met liefde gevierd voor de hele afdeling.",
+  finale: "DE FEESTBRIGADE VAN DEZE RONDE",
+  resultOne: "haalt het feest binnen.",
+  resultMany: "halen het feest binnen.",
+  ending: "Niemand hoeft er twee te halen. Proost!",
+  wheelColors: [
+    "#ff8787",
+    "#ffb366",
+    "#ffe066",
+    "#8ce99a",
+    "#74c0fc",
+    "#91a7ff",
+    "#c0a5ff",
+    "#f9a3c7",
+  ],
+};
 /** A variant's theme; a Koekrad round with a valid title takes that word. */
 export function themeFor(variant: WheelVariant, title?: string): WheelTheme {
   const word = variant === "cookie" ? roundTitle(title) : undefined;

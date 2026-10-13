@@ -36,6 +36,7 @@ export function WheelGrid({ session }: { session: BeerWheelSession }) {
               people={people}
               spin={spin}
               wheelIndex={i}
+              {...(own ? { own: { icon: own.icon, crew: own.crew } } : {})}
               spinning={session.state === "spinning" && !!spin && !winner}
             />
             <div

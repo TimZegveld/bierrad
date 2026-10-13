@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useTheme } from "../Theme";
 import type { Participant, SpinInstruction } from "../domain/models";
 import { useWheelAnimation } from "../hooks/useWheelAnimation";
@@ -18,14 +19,21 @@ export function BeerWheel({
   spin,
   spinning,
   wheelIndex = 0,
+  own,
 }: {
   people: readonly Participant[];
   spin?: SpinInstruction;
   spinning: boolean;
   wheelIndex?: number;
+  /** Feestrad: the wheel's own goal keeps its icon and crew; the colours stay rainbow. */
+  own?: { icon: string; crew: string };
 }) {
   const theme = useTheme();
   const palette = theme.wheelColors ?? colors;
+  // A waiting Feestrad lets its rainbow drift around the names, one slot at a
+  // time; display only, it never moves the wheel or touches the draw.
+  const drifting = theme.feest && !spin && people.length > 0;
+  const shift = useDrift(drifting);
   const displayed: readonly Participant[] = people.length
     ? people
     : Array.from({ length: 8 }, (_, i) => ({ id: String(i), name: "" }));
@@ -48,7 +56,11 @@ export function BeerWheel({
     210 - radius * Math.cos((angle * Math.PI) / 180),
   ];
   return (
-    <div className={`wheel-shell ${spinning ? "is-spinning" : ""}`}>
+    // A waiting Feestrad lets its colours drift around the names; display only,
+    // it never moves the wheel or touches the draw.
+    <div
+      className={`wheel-shell ${spinning ? "is-spinning" : ""}${drifting ? " is-waiting" : ""}`}
+    >
       <div ref={pointer} className="pointer" aria-hidden="true" />
       <svg
         ref={ref}
@@ -67,12 +79,18 @@ export function BeerWheel({
           return (
             <g key={p.id}>
               {displayed.length === 1 ? (
-                <circle cx="210" cy="210" r="194" fill={palette[0]} />
+                <circle
+                  cx="210"
+                  cy="210"
+                  r="194"
+                  className="wheel-segment"
+                  fill={palette[shift % palette.length]}
+                />
               ) : (
                 <path
                   d={`M 210 210 L ${a.join(" ")} A 194 194 0 ${size > 180 ? 1 : 0} 1 ${b.join(" ")} Z`}
                   className="wheel-segment"
-                  fill={palette[i % palette.length]}
+                  fill={palette[(i + shift) % palette.length]}
                   strokeWidth="2"
                 />
               )}
@@ -104,15 +122,29 @@ export function BeerWheel({
         })}
       </svg>
       <div className="wheel-hub" aria-hidden="true">
-        {theme.icon}
+        {own?.icon ?? theme.icon}
       </div>
       {!people.length && (
         <div className="empty-wheel">
-          Jouw {theme.crew}
+          Jouw {own?.crew ?? theme.crew}
           <br />
           <strong>hoort hier thuis.</strong>
         </div>
       )}
     </div>
   );
+}
+/** Steps about once a second while `on`; 0 otherwise and with reduced motion. */
+function useDrift(on: boolean): number {
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    if (!on || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches)
+      return;
+    const timer = window.setInterval(() => setStep((n) => n + 1), 900);
+    return () => {
+      window.clearInterval(timer);
+      setStep(0);
+    };
+  }, [on]);
+  return on ? step : 0;
 }

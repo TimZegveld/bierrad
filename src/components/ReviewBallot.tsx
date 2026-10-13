@@ -5,7 +5,8 @@ import {
   type ReviewBallot,
   type ReviewSubmission,
 } from "../../shared/reviews";
-import type { WheelVariant } from "../../shared/variant";
+import { themeFor, type WheelVariant } from "../../shared/variant";
+import type { RoundGoal } from "../../shared/channel";
 
 const clock = new Intl.DateTimeFormat("nl-NL", {
   timeZone: "Europe/Amsterdam",
@@ -91,7 +92,10 @@ export function ReviewBallotCard({
       {ballot.winners.map((winner, i) => (
         <fieldset key={winner.index} className="review-winner">
           <legend>
-            <span>{winner.name}</span>
+            <span>
+              {winner.name}
+              {winner.goal && <GoalTag goal={winner.goal} />}
+            </span>
             <small aria-live="polite">
               {scores[i] ? labels[scores[i]! - 1] : "Kies sterren"}
             </small>
@@ -193,5 +197,15 @@ export function ReviewJoin({
       {viewLink && <a href={viewLink}>Alleen kijken</a>}
       <small>{explanation}</small>
     </form>
+  );
+}
+/** Feestrad: what this haler fetched, e.g. "☕ koffie". */
+function GoalTag({ goal }: { goal: RoundGoal }) {
+  const theme = themeFor(goal.variant, goal.title);
+  return (
+    <span className="review-goal">
+      {" "}
+      · {theme.icon} {theme.drink}
+    </span>
   );
 }

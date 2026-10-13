@@ -654,7 +654,7 @@ export function boundBody(
     },
     {
       type: "text",
-      text: ": daar zie je steeds de huidige ronde. Een nieuwe ronde start je door hier /koffierad, /waterrad of /koekrad te typen (met bijvoorbeeld 10 erachter voor tien minuten, of /koekrad taart 10 voor een taartronde). Meedoen doe je door op ☕, 💧 of 🍪 te klikken onder de oproep. Eerdere links van dit kanaal werken niet meer.",
+      text: ": daar zie je steeds de huidige ronde. Een nieuwe ronde start je door hier /koffierad, /waterrad of /koekrad te typen (met bijvoorbeeld 10 erachter voor tien minuten, of /koekrad taart 10 voor een taartronde). Meedoen doe je door op ☕, 💧 of 🍪 te klikken onder de oproep. Typ je een tweede commando terwijl de ronde nog wacht, dan haakt dat rad aan en wordt het een 🌈 Feestrad: per doel één haler, niemand twee keer. Eerdere links van dit kanaal werken niet meer.",
     },
   ]);
 }

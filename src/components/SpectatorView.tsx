@@ -25,6 +25,7 @@ import { TimeLeft } from "./TimeLeft";
 import { ParticipantDrawer } from "./ParticipantDrawer";
 import { SpectatorResult } from "./SpectatorResult";
 import { Confetti } from "./Confetti";
+import { Fireworks } from "./Fireworks";
 /** Only celebrate when the reveal was actually watched, not on a later reload. */
 const CELEBRATION_WINDOW_MS = 15000;
 /** Read-only presentation for screens and office TVs; never issues commands. */
@@ -163,7 +164,8 @@ export function SpectatorView({
           </>
         ) : null}
       </div>
-      {celebrate && <Confetti key={draw.id} />}
+      {celebrate && <Confetti key={draw.id} party={theme.feest} />}
+      {celebrate && theme.feest && <Fireworks key={`fireworks-${draw.id}`} />}
     </div>
   );
 }

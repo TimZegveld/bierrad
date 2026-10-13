@@ -12,6 +12,8 @@ export interface SlackPerson {
   name: string;
   /** Extra Koekrad entry sponsored by this reactor, not their own signup. */
   cookieReaction?: string;
+  /** Feestrad only: the goal this signup is for; one entry per goal joined. */
+  reaction?: SlackReaction;
 }
 /** Emoji names become literal labels only; underscores represent spaces. */
 export function cookieName(reaction: unknown): string | undefined {
@@ -37,17 +39,30 @@ export function displayName(raw: unknown): string | undefined {
 }
 export class SlackReactionParticipantSource {
   constructor(private api: SlackApiClient) {}
-  /** `exclude` holds private IDs that never count, such as the bot's own prefilled reaction. */
+  /**
+   * `exclude` holds private IDs that never count, such as the bot's own
+   * prefilled reaction. A Feestrad passes every goal's reaction: each signup
+   * then names its goal, still from the one call message.
+   */
   async getParticipants(
     source: SlackSource,
     exclude: readonly string[] = [],
+    goalReactions: readonly SlackReaction[] = [source.reactionName],
   ): Promise<SlackPerson[]> {
+    const known = (name: unknown) =>
+      wheelVariants.some((v) => themes[v].reaction === name);
     if (
       !channel.test(source.channelId) ||
       !timestamp.test(source.parentMessageTs) ||
-      !wheelVariants.some((v) => themes[v].reaction === source.reactionName)
+      !known(source.reactionName) ||
+      !goalReactions.length ||
+      !goalReactions.every(known) ||
+      new Set(goalReactions).size !== goalReactions.length
     )
       throw new SlackError("slack_link");
+    const goals = goalReactions.length > 1;
+    const counted = (name: unknown) =>
+      goalReactions.some((r) => r === name);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 25000);
     try {
@@ -73,8 +88,8 @@ export class SlackReactionParticipantSource {
       const matches = reactions
         .map(object)
         .filter(
-          (r) => r.name === source.reactionName ||
-            (source.reactionName === "cookie" && cookieName(r.name)),
+          (r) => counted(r.name) ||
+            (goalReactions.includes("cookie") && cookieName(r.name)),
         );
       if (new Set(matches.map((r) => r.name)).size !== matches.length)
         throw new SlackError("slack_response");
@@ -92,7 +107,8 @@ export class SlackReactionParticipantSource {
         if (users.length !== r.count) throw new SlackError("slack_incomplete");
         return users.map((id) => ({ id, reaction: String(r.name) }));
       });
-      if (entries.length > 100) throw new SlackError("slack_too_many");
+      if (entries.length > 100 * goalReactions.length)
+        throw new SlackError("slack_too_many");
       const ids = [...new Set(entries.map((e) => e.id))].sort();
       const people = new Map<string, SlackPerson>();
       let cursor = 0;
@@ -133,8 +149,10 @@ export class SlackReactionParticipantSource {
       return entries
         .filter((e) => people.has(e.id))
         .sort((a, b) => a.reaction.localeCompare(b.reaction) || a.id.localeCompare(b.id))
-        .map((e) => e.reaction === source.reactionName
-          ? people.get(e.id)!
+        .map((e) => counted(e.reaction)
+          ? goals
+            ? { ...people.get(e.id)!, reaction: e.reaction as SlackReaction }
+            : people.get(e.id)!
           : { slackId: e.id, name: cookieName(e.reaction)!, cookieReaction: e.reaction });
     } finally {
       controller.abort();

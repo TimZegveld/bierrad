@@ -1,4 +1,12 @@
-import { isChannelVariant, type ChannelVariant } from "../shared/channel";
+import {
+  isChannelVariant,
+  isGoalVariant,
+  JOIN_CUTOFF_MS,
+  MAX_ROUND_GOALS,
+  validGoals,
+  type ChannelVariant,
+  type RoundGoal,
+} from "../shared/channel";
 import {
   beerReminderBody,
   reviewBody,
@@ -13,7 +21,9 @@ import {
   type SlackSource,
 } from "./slack/source";
 import {
+  addGoal,
   reconcile,
+  roundReactions,
   postMessage,
   postResult,
   updateMessage,
@@ -43,7 +53,7 @@ import {
   submitReview,
 } from "./reviews";
 import type { ReviewBallot } from "../shared/reviews";
-import { createSession } from "../src/domain/drawEngine";
+import { createSession, withGoals } from "../src/domain/drawEngine";
 import { SCHEDULE_RETENTION_MS } from "../shared/retention";
 import {
   advance,
@@ -169,6 +179,90 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
     if (review) record.review = { ...review, status: "waiting" };
     this.save(record);
     await this.ctx.storage.setAlarm(nextDeadline(record));
+  }
+  /**
+   * A waiting channel round gains a goal from another `/waterrad` or
+   * `/koekrad` in its channel and becomes a Feestrad. Only before the cutoff,
+   * never once the draw is being prepared. Resolves every goal, or why not.
+   */
+  async addChannelGoal(
+    goal: RoundGoal,
+  ): Promise<
+    | { goals: RoundGoal[] }
+    | { code: "too_late" | "present" | "full" | "unavailable" }
+  > {
+    const record = this.read();
+    const now = Date.now();
+    if (
+      !record ||
+      now >= record.expiresAt ||
+      !record.slack?.channelRound ||
+      !isGoalVariant(record.variant)
+    )
+      return { code: "unavailable" };
+    const plan = record.scheduledDraw;
+    if (
+      plan?.status !== "pending" ||
+      record.session.activeDraw ||
+      now >= Date.parse(plan.startAt) - JOIN_CUTOFF_MS
+    )
+      return { code: "too_late" };
+    const goals = record.goals ?? [
+      { variant: record.variant, ...(record.title ? { title: record.title } : {}) },
+    ];
+    if (goals.some((g) => g.variant === goal.variant)) return { code: "present" };
+    if (goals.length >= MAX_ROUND_GOALS) return { code: "full" };
+    // Validated again: known kinds, each once, a word only for koek.
+    const valid = validGoals([...goals, goal]);
+    if (!valid) return { code: "unavailable" };
+    addGoal(record, valid.at(-1)!);
+    // Read the new emoji soon, so the new wheel fills while people react.
+    record.slack.nextImportAt = Math.min(
+      record.slack.nextImportAt ?? Infinity,
+      now + 20000,
+    );
+    record.revision++;
+    this.save(record);
+    this.broadcast(record);
+    await this.ctx.storage.setAlarm(nextDeadline(record));
+    return { goals: record.goals!.map((g) => ({ ...g })) };
+  }
+  /** Undoes the last goal when its announcement was refused; only before the draw. */
+  async removeChannelGoal(variant: unknown): Promise<void> {
+    const record = this.read();
+    const goals = record?.goals;
+    if (
+      !record ||
+      Date.now() >= record.expiresAt ||
+      !goals ||
+      goals.at(-1)!.variant !== variant ||
+      record.scheduledDraw?.status !== "pending" ||
+      record.session.activeDraw
+    )
+      return;
+    const s = record.session;
+    const pools = (s.goals ?? []).slice(0, goals.length - 1);
+    const kept = new Set(pools.flatMap((g) => [...g.participantIds]));
+    const people = s.participants.filter((p) => kept.has(p.id));
+    if (pools.length > 1) {
+      record.goals = goals.slice(0, -1);
+      record.session = withGoals(createSession(s.id, people, 1), pools);
+    } else {
+      delete record.goals;
+      const [own] = pools;
+      record.session = createSession(
+        s.id,
+        (own?.participantIds ?? []).map((id, i) => {
+          const person = people.find((p) => p.id === id)!;
+          const weight = own.weights?.[i] ?? 1;
+          return weight > 1 ? { ...person, weight } : person;
+        }),
+        record.preferredCount,
+      );
+    }
+    record.revision++;
+    this.save(record);
+    this.broadcast(record);
   }
   /** True once a channel round no longer blocks the next: drawn and stopped, skipped or gone. */
   async channelRoundSettled(): Promise<boolean> {
@@ -656,6 +750,8 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
       throw new RequestError(429, "slack_rate_limited");
     const source = state.source;
     if (!source) throw new RequestError(400, "slack_link");
+    // A goal that joins meanwhile changes what to read; this read then waits.
+    const goalCount = record.goals?.length ?? 1;
     const id = crypto.randomUUID();
     state.importing = { id, until: Date.now() + 120000 };
     state.nextImportAt = Date.now() + refreshInterval(record, Date.now());
@@ -670,7 +766,7 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
         new SlackApiClient(
           slackEnvironment(this.env, record.variant).SLACK_BOT_TOKEN!,
         ),
-      ).getParticipants(source, state.excludeUserIds);
+      ).getParticipants(source, state.excludeUserIds, roundReactions(record));
       const current = this.read();
       if (
         !current ||
@@ -682,6 +778,15 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
         )
       )
         throw new RequestError(409, "unavailable");
+      if ((current.goals?.length ?? 1) !== goalCount) {
+        delete current.slack.importing;
+        current.slack.nextImportAt = Date.now();
+        delete current.slack.retryImportAt;
+        current.revision++;
+        this.save(current);
+        await this.ctx.storage.setAlarm(nextDeadline(current));
+        return false;
+      }
       reconcile(current, source, people, Date.now());
       delete current.slack.importing;
       current.revision++;
@@ -820,6 +925,7 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
         record.review?.status === "open" ? record.review.link : undefined,
         record.title,
         record.intro,
+        record.goals,
       ),
     );
     const latest = this.read();

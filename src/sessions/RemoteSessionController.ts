@@ -160,6 +160,7 @@ export class RemoteSessionController implements SessionController {
       variant: dto.variant ?? "beer",
       ...(dto.title ? { title: dto.title } : {}),
       participants: dto.participants,
+      ...(dto.goals ? { goals: dto.goals } : {}),
       winnerCount: dto.winnerCount,
       state: dto.state,
       winnerIds: dto.winnerIds,

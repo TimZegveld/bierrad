@@ -11,10 +11,19 @@ const BURSTS: readonly [number, number, number][] = [
   [88, 34, 3.4],
   [44, 28, 4],
   [60, 18, 4.6],
+  [8, 34, 0.5],
+  [92, 14, 1],
+  [36, 18, 1.5],
+  [64, 30, 2],
+  [22, 12, 2.6],
+  [84, 26, 3.1],
+  [48, 36, 3.7],
+  [14, 28, 4.3],
+  [74, 12, 4.9],
 ];
 const SPARKS = 18;
 /**
- * A Feestrad finale: rainbow fireworks over the wheels. Display only, CSS
+ * A Feestrad finale: eighteen rainbow fireworks over the wheels. Display only, CSS
  * only, gone with reduced motion; it never touches the draw.
  */
 export function Fireworks() {

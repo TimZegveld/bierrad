@@ -2375,3 +2375,118 @@ body {
   font-weight: 500;
   color: var(--text-muted);
 }
+
+/* Feestrad finale: more confetti, swaying as it falls. */
+.confetti.party i {
+  top: -30px;
+  animation-name: fall-sway;
+  animation-timing-function: cubic-bezier(0.25, 0.4, 0.6, 1);
+}
+@keyframes fall-sway {
+  30% {
+    translate: calc(var(--sway, 40px) * -0.5) 30vh;
+  }
+  65% {
+    translate: var(--sway, 40px) 68vh;
+  }
+  to {
+    translate: calc(var(--sway, 40px) * 0.3) 108vh;
+    rotate: 900deg;
+  }
+}
+/* Feestrad finale: rainbow fireworks over the wheels. */
+.fireworks {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 11;
+}
+.firework {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+.firework-rocket {
+  position: absolute;
+  left: -2px;
+  top: 0;
+  width: 4px;
+  height: 22px;
+  border-radius: 2px;
+  background: linear-gradient(to top, transparent, var(--color));
+  opacity: 0;
+  animation: rocket 0.7s ease-out var(--delay) both;
+}
+@keyframes rocket {
+  from {
+    opacity: 1;
+    translate: 0 70vh;
+  }
+  90% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    translate: 0 0;
+  }
+}
+.firework-flash {
+  position: absolute;
+  left: -40px;
+  top: -40px;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 12%, var(--color) 30%, transparent 70%);
+  opacity: 0;
+  scale: 0.2;
+  animation: flash 0.6s ease-out calc(var(--delay) + 0.68s) both;
+}
+@keyframes flash {
+  30% {
+    opacity: 0.9;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    scale: 1.6;
+  }
+}
+.firework i {
+  position: absolute;
+  left: -3px;
+  top: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color);
+  box-shadow: 0 0 8px var(--color), 0 0 2px #fff;
+  opacity: 0;
+  rotate: var(--angle);
+  animation: spark 1.5s cubic-bezier(0.1, 0.7, 0.3, 1) calc(var(--delay) + 0.68s) both;
+}
+.firework i:nth-child(odd) {
+  background: var(--color-2);
+  box-shadow: 0 0 8px var(--color-2), 0 0 2px #fff;
+}
+@keyframes spark {
+  from {
+    opacity: 1;
+    translate: 0 0;
+  }
+  70% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    /* Out along its own angle, then sinking a little. */
+    transform: translateY(calc(var(--reach) * -1)) translateX(0);
+    translate: 0 24px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fireworks {
+    display: none;
+  }
+}

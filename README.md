@@ -57,7 +57,7 @@ npm run demo
 
 Eén commando, zonder Slack-app of secrets: bouwt de Worker, draait hem in Miniflare met een nep-Slack ervoor (poort 8787) en start Vite (poort 5173). Open `http://127.0.0.1:8787/__demo/`. Daar staat een nep-Slack-kanaal met een koffieoproep van zes verzonnen collega's. Klik op **Open de ronde**, log in via de nep-inlogpagina als een van de zes, zie het rad 10 seconden aftellen en draaien, en stem daarna. Knoppen op de demopagina slaan de wachtminuut voor het stemmen over, laten de anderen stemmen of starten een nieuwe ronde. De reviews verschijnen in de nep-thread. Alles staat in het geheugen; herstarten wist alles. De tijdhooks (`DemoSession`, `DemoChannel`) worden uitsluitend aan de in-memory demobundle toegevoegd en zitten niet in productie. Stop eerst een lopende `dev:worker` of `dev`, want de demo gebruikt dezelfde poorten.
 
-`npm run demo:bier` doet hetzelfde voor het Bierrad: de bot plaatst een `/bierrad` over een kwartier met een eigen tekst, je klikt op **radje**, logt in, en bij het aftellen verschijnt de herinnering met **Inloggen** en **alleen meekijken** in de thread. Daarna draait het rad met twee halers.
+`npm run demo:bier` doet hetzelfde voor het Bierrad: de bot plaatst een `/bierrad` over een kwartier met een eigen tekst, je klikt op **radje**, logt in, en bij het aftellen verschijnt de herinnering met **Inloggen** en **alleen meekijken** in de thread. Daarna draait het rad met twee halers. Met **🎉 Nog 16 collega's klikken 🍻** groeit de ronde naar 22 deelnemers en wordt het een Bierfeest, met het bericht in de nep-thread. **↩️ Die 16 haken weer af** zet het weer terug.
 
 ## Validatie
 
@@ -133,7 +133,7 @@ Een hostcapability bestaat uit een willekeurige 128-bit locator plus een onafhan
 | `GET /api/socket` upgrade | Geldige host of kijker | Snapshotupdates; alleen pingberichten toegestaan |
 | `GET /api/channel` | Geldige beheer- of aanvraaglink van een kanaal-Koffierad | Status, standaardwachttijd en lopende ronde |
 | `POST /api/channel` | Idem; beheer alleen met beheerlink | `setDefaultMinutes`, `setReviews`, `rotateRequestLink`, `unbind`; met een persoonlijke link `review` en `logout`. Rondes starten alleen met `/koffierad`, `/waterrad` of `/koekrad`. |
-| `POST /slack/commands` | Uitsluitend met geldige handtekening van de Koffierad-app | `/koffierad [minuten]`, `/waterrad [minuten]` of `/koekrad [titel] [minuten]` start een koffie-, water- of koekronde in het gekoppelde kanaal |
+| `POST /slack/commands` | Uitsluitend met geldige handtekening van de Koffierad-app | `/koffierad [minuten]`, `/waterrad [minuten]` of `/koekrad [titel] [minuten]` start een koffie-, water- of koekronde in het gekoppelde kanaal, of haakt aan bij een wachtende ronde als Feestrad |
 | `POST /slack/bier-commands` | Uitsluitend met geldige handtekening van de Bierrad-app | `/bierrad [dag] [tijd] [aantal] [tekst]` plant een bierronde in het gekoppelde kanaal |
 
 HTTP gebruikt `Authorization: Bearer <capability>`. Browsers bieden bij WebSocket-upgrade `bierrad, auth.<capability>` als subprotocol aan; de server selecteert alleen `bierrad`. Geen capabilities in backend-URLs of querystrings. Commando's: `setParticipants` (namen, server maakt IDs), `setWinnerCount`, `setScheduledDraw` (ISO-tijd of null om te annuleren, optioneel met `spectatorCapability` om de kijklink vooraf in de Slack-thread te laten plaatsen), `startDraw`, `reset`, `endSession`. De client kan nooit officiële winnaars/instructies aanleveren. Backendrechten zijn bepalend; frontendcapabilities zijn alleen UX.
@@ -186,6 +186,19 @@ Koppel het Bierrad aan een kanaal via `#/bier-koppelen` (met de eigen Bierrad-ap
 
 "radje" in de oproep opent het vaste rad van het kanaal (`#/bier/…`), waar je **inlogt met Slack** of **alleen meekijkt**. Twee minuten voor de start zet de bot beide links nog eens in de thread. Na de trekking staan de halers met @vermelding in de thread en in de bijgewerkte oproep; deelnemers geven ze daarna anoniem 1–5 sterren (standaard 30 minuten). Op de beheerpagina stel je het standaard aantal halers en de reviews in. Zie [Bierrad instellen](docs/slack-setup.md#bierrad-app-bierrad-in-een-kanaal).
 
+#### Bierfeest 🎉
+
+Doen er **20 of meer** collega's mee aan een `/bierrad`-ronde, dan wordt het een **Bierfeest**:
+- De pagina wordt goud en amber, met een schuimkraag bovenaan, opstijgende bubbels, gouden lijsten om de raderen en gouden kleuren die rond de namen bewegen.
+- Wie meekijkt terwijl de 20 gehaald wordt, ziet "🍻 → 🎉 Het Bierrad wordt een Bierfeest!".
+- De bot zet één keer in de thread "🎉 Al N aanmeldingen: deze bierronde wordt een Bierfeest! 🍻". Dat bericht komt niet in het kanaal.
+- De finale krijgt goud confetti en vuurwerk.
+- Het aantal halers en de trekking veranderen niet; het is alleen de opmaak.
+- Haken mensen af tot onder de 20, dan wordt het zonder melding weer een gewone bierronde. Komt het daarna weer boven de 20, dan volgt geen tweede bericht. Bij de start beslissen de deelnemers die dan meedoen.
+- Alleen de server telt. Een los of lokaal Bierrad wordt nooit een Bierfeest.
+
+Zie de [securityreview](SECURITY.md#bierrad-channel-rounds--reviewed-exception-2026-10-07).
+
 [Appmanifest en veilige instelling](docs/slack-setup.md) · [Security review](docs/slack-security-review.md)
 
 `worker/slack` bevat de getypeerde client, deelnemersbron, private mapping en resultaattekst; `worker/slack/routes.ts`, `login.ts` en `login-attempt.ts` verzorgen Sign in with Slack, alleen om een kanaal te koppelen of voor een persoonlijke kanaallink. De raderen/selectie zijn ongewijzigd en blijven zonder netwerk of Slack functioneren.
@@ -215,6 +228,22 @@ Het vierde rad: **wie haalt de koek, taart of bitterballen?** Net als het Waterr
 Bij een Koekrad maakt iedere menselijke reactie met `:naam-koek:` het vak van die naam groter, bijvoorbeeld `:alice-koek:`. Alice krijgt dan één extra lot: haar vak is twee keer zo groot en ze heeft twee keer zoveel kans. Vier mensen met `:alice-koek:` geven haar vak vijf loten. Het telt alleen als precies één 🍪-deelnemer exact zo heet (hoofdletters maken niet uit); ontbreekt de naam of komt hij twee keer voor, dan doet de reactie niets. Een koekemoji meldt niemand aan, ook de plaatser niet, en geeft geen extra reviewstem. Verwijderen van de reactie maakt het vak bij de volgende controle weer kleiner. Voor een volledige naam gebruik je underscores, bijvoorbeeld `:alice_bakker-koek:` voor `Alice Bakker`.
 
 Wint Alice, dan kiest de server tegelijk met de trekking één van haar loten. Was dat een koekemoji, dan zet hij **Mede mogelijk gemaakt door... @degene die reageerde** in de threaduitslag; was het haar eigen 🍪, dan niet. Bier-, koffie- en waterreacties veranderen niet.
+
+Op de rondepagina toont het knopje **deelnemers** (bijvoorbeeld ☕ 6 deelnemers) iedereen met diens winkans, precies zoals de server trekt: een groter koekvak geeft een grotere kans. Bij een Feestrad staat per deelnemer de kans per rad waar die aan meedoet, en daarboven de kans om één van de raden te winnen. De kansen zijn alleen ter info en berekend uit wat de pagina al toont; ze beïnvloeden de trekking niet.
+
+## Feestrad 🌈
+
+Soms wil je koffie én water, of koffie én taart. Typ dan gewoon het tweede commando terwijl de eerste ronde nog wacht: een `/waterrad` of `/koekrad taart` tijdens een koffieronde haakt aan bij die ronde en het **Koffierad wordt een Feestrad**. Alle drie de raden kunnen samen.
+- Er komt geen tweede oproep. De bot zet de nieuwe emoji onder de bestaande oproep, past de oproep aan zodat hij alle doelen noemt, en kondigt het aan in de thread, zichtbaar voor het hele kanaal.
+- Je doet mee door te klikken op wat je wilt halen. Meedoen voor meer doelen mag.
+- De ronde houdt haar starttijd. De minuten van het tweede commando tellen niet.
+- Aanhaken kan tot een minuut voor de start, en ieder rad maar één keer.
+- Elke aanhaking telt mee voor de daglimiet.
+- Bij de start kiest de server in één trekking per doel één haler, en **niemand wint twee keer**. Is iemand de enige voor water, dan haalt die het water en kiezen de andere raden uit de rest. Is er voor een doel niemand meer over, dan blijft dat rad stil.
+- Reviewen doe je alleen bij de raden waar je zelf aan meedeed, nooit bij jezelf. De sterlabels horen bij het rad van de haler: de taarthaler krijgt koeklabels, geen waterlabels.
+- Het Bierrad doet niet mee: dat is een aparte app.
+
+Zie de [securityreview](SECURITY.md#feestrad--reviewed-exception-2026-10-13).
 
 ## Linkvoorbeelden
 

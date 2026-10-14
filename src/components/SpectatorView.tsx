@@ -7,7 +7,7 @@ import {
   type CSSProperties,
 } from "react";
 import { useTheme } from "../Theme";
-import { localHash } from "../../shared/variant";
+import { localHash, themes } from "../../shared/variant";
 import type { BeerWheelSession } from "../domain/models";
 import type { LiveInfo } from "../sessions/SessionController";
 import { sessionWinners, wheelCount } from "../domain/drawEngine";
@@ -25,6 +25,7 @@ import { TimeLeft } from "./TimeLeft";
 import { ParticipantDrawer } from "./ParticipantDrawer";
 import { SpectatorResult } from "./SpectatorResult";
 import { Confetti } from "./Confetti";
+import { Fireworks } from "./Fireworks";
 /** Only celebrate when the reveal was actually watched, not on a later reload. */
 const CELEBRATION_WINDOW_MS = 15000;
 /** Read-only presentation for screens and office TVs; never issues commands. */
@@ -99,7 +100,7 @@ export function SpectatorView({
           </p>
         )}
         {!show && session.participants.length > 0 && (
-          <ParticipantDrawer people={session.participants} />
+          <ParticipantDrawer session={session} />
         )}
       </div>
       {notice && (
@@ -127,7 +128,7 @@ export function SpectatorView({
       </main>
       <div className="spectator-status" aria-live="polite">
         {view.phase === "result" ? (
-          <SpectatorResult winners={sessionWinners(session)} />
+          <SpectatorResult winners={sessionWinners(session)} session={session} />
         ) : view.phase === "empty" ? (
           <>
             {view.skipped ? (
@@ -163,7 +164,16 @@ export function SpectatorView({
           </>
         ) : null}
       </div>
-      {celebrate && <Confetti key={draw.id} />}
+      {celebrate && (
+        <Confetti
+          key={draw.id}
+          party={theme.feest || theme.bierfeest}
+          gold={theme.bierfeest}
+        />
+      )}
+      {celebrate && (theme.feest || theme.bierfeest) && (
+        <Fireworks key={`fireworks-${draw.id}`} gold={theme.bierfeest} />
+      )}
     </div>
   );
 }
@@ -202,7 +212,13 @@ function SpectatorHeader({ status }: { status: LiveInfo["status"] }) {
       >
         ⛶
       </button>
-      <a href={localHash(theme.variant)}>Eigen {theme.name}</a>
+      {/* There is no local Feestrad or Bierfeest: the link opens the round's own wheel. */}
+      <a href={localHash(theme.variant)}>
+        Eigen{" "}
+        {theme.feest || theme.bierfeest
+          ? themes[theme.variant].name
+          : theme.name}
+      </a>
     </div>
   );
 }

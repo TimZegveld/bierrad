@@ -17,6 +17,8 @@ export interface LiveInfo {
   review?: import("../../shared/reviews").ReviewProgress;
   /** Per winner, once the round's review has closed. */
   reviewOutcomes?: import("../../shared/reviews").ReviewOutcome[];
+  /** A Bierrad channel round with many participants, as the server says; display only. */
+  bierfeest?: true;
 }
 export interface SessionSnapshot {
   readonly session: BeerWheelSession;

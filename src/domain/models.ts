@@ -23,15 +23,34 @@ export interface SpinInstruction {
   readonly startRotation: number;
   readonly targetRotation: number;
   readonly easing: "cubic-bezier(.3,0,0,1)";
+  /** Feestrad goals only: this wheel's own frozen pool; absent means the draw's shared pool. */
+  readonly participantIds?: readonly string[];
+  /** Frozen slice sizes parallel to the spin's own `participantIds`. */
+  readonly weights?: readonly number[];
 }
 export interface DrawInstruction {
   readonly id: string;
   readonly startAt: string;
-  /** One full, ordered pool shared by every wheel. */
+  /**
+   * One full, ordered pool shared by every wheel. In a Feestrad draw everyone
+   * who joined any goal; each spin then carries its goal's own pool.
+   */
   readonly participantIds: readonly string[];
   /** Frozen slice sizes parallel to `participantIds`; absent when all are equal. */
   readonly weights?: readonly number[];
+  /** One per wheel that turns; a Feestrad goal nobody is left for has none. */
   readonly spins: readonly SpinInstruction[];
+}
+/**
+ * One goal of a Feestrad round: its own wheel and its own pool from the
+ * session's participants. The variant and title are display only.
+ */
+export interface DrawGoal {
+  readonly variant: WheelVariant;
+  readonly title?: string;
+  readonly participantIds: readonly string[];
+  /** Slice sizes parallel to `participantIds`; absent when all are equal. */
+  readonly weights?: readonly number[];
 }
 export interface BeerWheelSession {
   readonly variant?: WheelVariant;
@@ -39,6 +58,11 @@ export interface BeerWheelSession {
   readonly title?: string;
   readonly id: string;
   readonly participants: readonly Participant[];
+  /**
+   * Feestrad rounds only: one wheel and one winner per goal, nobody twice.
+   * `participants` then holds everyone who joined any goal.
+   */
+  readonly goals?: readonly DrawGoal[];
   readonly winnerCount: number;
   readonly state: DrawState;
   readonly mode: "manual" | "scheduled";

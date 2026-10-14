@@ -1,11 +1,13 @@
 import {
   beerReminderBody,
+  bierfeestBody,
   reviewBody,
   settledCallBody,
 } from "../channel/messages";
 import { isChannelVariant } from "../../shared/channel";
 import { SlackApiClient } from "./api";
 import {
+  isBierfeest,
   postMessage,
   postResult,
   updateMessage,
@@ -95,6 +97,82 @@ export class SessionSlackJobs {
       current.readyAt = result.retryAt;
       this.save(latest);
     } else settle(latest, result.status);
+    await this.ctx.storage.setAlarm(nextDeadline(latest));
+  }
+  /**
+   * The Bierfeest reply of a Bierrad round, like the reminder: claimed before
+   * I/O, never repeated when delivery is uncertain, retried once after a
+   * definite rejection and only before the start. Dropped unsent when the
+   * round fell back below the threshold.
+   */
+  async processBierfeestNotice() {
+    const record = this.read();
+    const notice = record?.slack?.bierfeest,
+      source = record?.slack?.source;
+    if (!record || Date.now() >= record.expiresAt || !notice || !source) return;
+    if (notice.status === "posting") {
+      if (Date.now() >= notice.attemptedAt! + 120000) {
+        notice.status = "uncertain";
+        this.save(record);
+      }
+      return;
+    }
+    if (notice.status !== "pending" || notice.readyAt > Date.now()) return;
+    if (!isBierfeest(record)) {
+      delete record.slack!.bierfeest;
+      this.save(record);
+      return;
+    }
+    const plan = record.scheduledDraw;
+    if (
+      plan?.status !== "pending" ||
+      Date.now() >= Date.parse(plan.startAt) - 30000 ||
+      !slackAllowed(
+        record.slack!.grantHash,
+        slackEnvironment(this.env, record.variant),
+      )
+    ) {
+      notice.status = "skipped";
+      this.save(record);
+      return;
+    }
+    const body = bierfeestBody(
+      source.channelId,
+      source.parentMessageTs,
+      record.session.participants.length,
+    );
+    notice.status = "posting";
+    notice.attempts++;
+    const attemptedAt = (notice.attemptedAt = Date.now());
+    this.save(record);
+    await this.ctx.storage.setAlarm(nextDeadline(record));
+    await this.ctx.storage.sync();
+    const result = await postMessage(
+      new SlackApiClient(
+        slackEnvironment(this.env, record.variant).SLACK_BOT_TOKEN!,
+      ),
+      source.channelId,
+      body,
+    );
+    const latest = this.read();
+    const current = latest?.slack?.bierfeest;
+    if (
+      !latest ||
+      Date.now() >= latest.expiresAt ||
+      current?.status !== "posting" ||
+      current.attemptedAt !== attemptedAt
+    )
+      return;
+    const start = Date.parse(latest.scheduledDraw?.startAt ?? "");
+    if (
+      result.status === "failed" &&
+      current.attempts < 2 &&
+      result.retryAt < start - 30000
+    ) {
+      current.status = "pending";
+      current.readyAt = result.retryAt;
+    } else current.status = result.status;
+    this.save(latest);
     await this.ctx.storage.setAlarm(nextDeadline(latest));
   }
   async processSlackResult() {
@@ -206,6 +284,7 @@ export class SessionSlackJobs {
         record.review?.status === "open" ? record.review.link : undefined,
         record.title,
         record.intro,
+        record.goals,
       ),
     );
     const latest = this.read();

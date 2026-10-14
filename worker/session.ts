@@ -1,5 +1,7 @@
 import type { WheelVariant } from "../shared/variant";
+import type { RoundGoal } from "../shared/channel";
 import {
+  isBierfeest,
   queueChannelNotice,
   queueResult,
   type SlackState,
@@ -47,6 +49,11 @@ export interface StoredSession {
    * never in a DTO, log or error.
    */
   intro?: string;
+  /**
+   * Channel rounds that grew into a Feestrad: every goal in wheel order, the
+   * first being `variant` (and `title`). Display and pools only.
+   */
+  goals?: RoundGoal[];
   session: BeerWheelSession;
   hostHash: string;
   spectatorHash: string;
@@ -92,6 +99,16 @@ export function publicSession(record: StoredSession): PublicBeerWheelSession {
       p.weight ? { id: p.id, name: p.name, weight: p.weight } : { id: p.id, name: p.name },
     ),
     winnerCount: s.winnerCount,
+    ...(s.goals
+      ? {
+          goals: s.goals.map((g) => ({
+            variant: g.variant,
+            ...(g.title ? { title: g.title } : {}),
+            participantIds: [...g.participantIds],
+            ...(g.weights ? { weights: [...g.weights] } : {}),
+          })),
+        }
+      : {}),
     state: s.state,
     winnerIds: [...s.winnerIds],
     ...(s.activeDraw
@@ -113,6 +130,10 @@ export function publicSession(record: StoredSession): PublicBeerWheelSession {
               startRotation: p.startRotation,
               targetRotation: p.targetRotation,
               easing: p.easing,
+              ...(p.participantIds
+                ? { participantIds: [...p.participantIds] }
+                : {}),
+              ...(p.weights ? { weights: [...p.weights] } : {}),
             })),
           },
         }
@@ -125,6 +146,7 @@ export function publicSession(record: StoredSession): PublicBeerWheelSession {
           },
         }
       : {}),
+    ...(isBierfeest(record) ? { bierfeest: true as const } : {}),
     ...(reviewProgress(record) ? { review: reviewProgress(record) } : {}),
     ...(reviewOutcomes(record) ? { reviewOutcomes: reviewOutcomes(record) } : {}),
     expiresAt: new Date(record.expiresAt).toISOString(),
@@ -234,6 +256,9 @@ export function nextDeadline(record: StoredSession): number {
   if (slack?.reminder?.status === "pending") times.push(slack.reminder.readyAt);
   if (slack?.reminder?.status === "posting")
     times.push(slack.reminder.attemptedAt! + 120000);
+  if (slack?.bierfeest?.status === "pending") times.push(slack.bierfeest.readyAt);
+  if (slack?.bierfeest?.status === "posting")
+    times.push(slack.bierfeest.attemptedAt! + 120000);
 
   if (draw && s.state === "countdown") times.push(Date.parse(draw.startAt));
   if (draw && ["countdown", "spinning"].includes(s.state))

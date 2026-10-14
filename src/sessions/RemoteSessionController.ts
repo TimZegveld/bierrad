@@ -88,6 +88,7 @@ export class RemoteSessionController implements SessionController {
   private scheduledDraw?: PublicBeerWheelSession["scheduledDraw"];
   private review?: import("../../shared/reviews").ReviewProgress;
   private reviewOutcomes?: import("../../shared/reviews").ReviewOutcome[];
+  private bierfeest?: true;
   private connecting = false;
   private readonly fetcher: typeof fetch;
   constructor(private readonly options: RemoteOptions) {
@@ -126,6 +127,7 @@ export class RemoteSessionController implements SessionController {
         scheduledDraw: this.scheduledDraw,
         review: this.review,
         reviewOutcomes: this.reviewOutcomes,
+        ...(this.bierfeest ? { bierfeest: true as const } : {}),
       },
     });
   }
@@ -153,6 +155,7 @@ export class RemoteSessionController implements SessionController {
     this.scheduledDraw = dto.scheduledDraw;
     this.review = dto.review;
     this.reviewOutcomes = dto.reviewOutcomes;
+    this.bierfeest = dto.bierfeest === true ? true : undefined;
     const oldDraw = this.snapshot.session.activeDraw;
     const session: BeerWheelSession = Object.freeze({
       id: "live",
@@ -160,6 +163,7 @@ export class RemoteSessionController implements SessionController {
       variant: dto.variant ?? "beer",
       ...(dto.title ? { title: dto.title } : {}),
       participants: dto.participants,
+      ...(dto.goals ? { goals: dto.goals } : {}),
       winnerCount: dto.winnerCount,
       state: dto.state,
       winnerIds: dto.winnerIds,

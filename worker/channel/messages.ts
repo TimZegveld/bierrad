@@ -1,8 +1,10 @@
 import {
   channelApps,
+  feestCopy,
   roundCopy,
   type ChannelApp,
   type ChannelVariant,
+  type RoundGoal,
 } from "../../shared/channel";
 import { themeFor } from "../../shared/variant";
 import { slackRating, type RatingEmoji } from "../slack/rating";
@@ -43,7 +45,8 @@ const options = {
 } as const;
 /**
  * Fixed Koffierad channel messages. Only server-built links and times; no
- * names, mentions or client-supplied text. Never unfurled or broadcast.
+ * names, mentions or client-supplied text. Never unfurled; only the
+ * announcement of a Feestrad goal (`joinBody`) is broadcast from a thread.
  * (Round cards below may carry a Koekrad word, which `roundTitle` limits to
  * letters and hyphens and which only ever appears in literal text elements.)
  */
@@ -72,14 +75,16 @@ function card(
   title?: string,
   /** Bierrad only: the round's own text, above the title. */
   intro?: string,
+  /** A Feestrad: its own title instead of the round's. */
+  feest?: boolean,
 ) {
   const theme = themeFor(variant, title),
-    round = roundCopy(variant, title).round;
+    round = feest ? feestCopy.round : roundCopy(variant, title).round;
   const elements: Element[] = [
     ...(intro ? [...introElements(intro), { type: "text" as const, text: "\n" }] : []),
     {
       type: "text",
-      text: `${theme.icon} ${round[0].toUpperCase()}${round.slice(1)} om ${clock.format(startAt)}`,
+      text: `${feest ? feestCopy.icon : theme.icon} ${round[0].toUpperCase()}${round.slice(1)} om ${clock.format(startAt)}`,
       style: { bold: true },
     },
     { type: "text", text: "\n" },
@@ -129,6 +134,86 @@ export function callBody(
     title,
   );
   return { channel: channelId, text: fallback(elements), blocks, ...options };
+}
+/** "☕ koffie · 💧 water · 🍪 taart": every goal of a Feestrad. */
+function goalList(goals: readonly RoundGoal[]): string {
+  return goals
+    .map((g) => {
+      const theme = themeFor(g.variant, g.title);
+      return `${theme.icon} ${theme.drink}`;
+    })
+    .join(" · ");
+}
+/**
+ * The call of a round that grew into a Feestrad, rewritten in place: every
+ * goal and its emoji, the same link as before. Fixed text and the validated
+ * Koekrad word only.
+ */
+export function feestCallBody(
+  channelId: string,
+  ts: string,
+  link: string,
+  linkText: string,
+  startAt: number,
+  goals: readonly RoundGoal[],
+) {
+  const { elements, blocks } = card(
+    goals[0].variant,
+    startAt,
+    [
+      {
+        type: "text",
+        text: `Klik hieronder op wat je wilt halen: ${goalList(goals)}.\nMeedoen voor meer mag, maar je wint er hooguit één.\n`,
+      },
+      { type: "link", url: link, text: linkText },
+    ],
+    `Het ${feestCopy.name} kiest per doel één haler, en niemand twee keer.`,
+    goals[0].title,
+    undefined,
+    true,
+  );
+  return { channel: channelId, ts, text: fallback(elements), blocks, ...options };
+}
+/**
+ * In the call's thread, also shown in the channel: a new goal joined the
+ * waiting round. The one deliberate broadcast, so everyone sees the new emoji.
+ */
+export function joinBody(
+  channelId: string,
+  threadTs: string,
+  goals: readonly RoundGoal[],
+  startAt: number,
+) {
+  const added = goals.at(-1)!;
+  const theme = themeFor(added.variant, added.title);
+  const grows =
+    goals.length === 2
+      ? `Het ${themeFor(goals[0].variant, goals[0].title).name} wordt een ${feestCopy.name} ${feestCopy.icon}`
+      : `Het ${feestCopy.name} groeit ${feestCopy.icon}`;
+  const elements: Element[] = [
+    {
+      type: "text",
+      text: `${theme.icon} Er komt een ${theme.name} bij!`,
+      style: { bold: true },
+    },
+    {
+      type: "text",
+      text: ` ${grows}\nKlik op ${theme.icon} onder de oproep om ${theme.drink} te halen. Het rad draait om ${clock.format(startAt)}.`,
+    },
+  ];
+  return {
+    channel: channelId,
+    thread_ts: threadTs,
+    text: fallback(elements),
+    blocks: [
+      {
+        type: "rich_text",
+        elements: [{ type: "rich_text_section", elements }],
+      },
+    ],
+    ...options,
+    reply_broadcast: true,
+  };
 }
 /**
  * Slack-style emoji shortcodes, e.g. `:tim-koek:` or `:+1:`, never only digits
@@ -286,6 +371,35 @@ export function beerReminderBody(
     reply_broadcast: false,
   };
 }
+/**
+ * The one thread reply when a waiting Bierrad round becomes a Bierfeest: fixed
+ * text and the server's own count, no link, name or mention, never broadcast.
+ */
+export function bierfeestBody(
+  channelId: string,
+  threadTs: string,
+  participants: number,
+) {
+  const elements: Element[] = [
+    {
+      type: "text",
+      text: `🎉 Al ${participants} aanmeldingen: deze bierronde wordt een Bierfeest! 🍻`,
+    },
+  ];
+  return {
+    channel: channelId,
+    thread_ts: threadTs,
+    text: fallback(elements),
+    blocks: [
+      {
+        type: "rich_text",
+        elements: [{ type: "rich_text_section", elements }],
+      },
+    ],
+    ...options,
+    reply_broadcast: false,
+  };
+}
 /** What a settled round shows in place of its call. */
 export type CallOutcome =
   | {
@@ -298,6 +412,9 @@ export type CallOutcome =
       reviewUntil?: number;
       /** After the review closed: per winner, null when nobody reviewed them. */
       ratings?: ({ average: number; count: number } | null)[];
+      /** Feestrad only: every goal, and per winner the wheel (goal) they won. */
+      goals?: RoundGoal[];
+      wheels?: number[];
     }
   | { kind: "empty" | "unreadable" };
 /** Server-frozen identities only; anything else stays literal text. */
@@ -322,13 +439,59 @@ export function settledCallBody(
   title?: string,
   /** Bierrad only: the round's own text, kept above the result. */
   intro?: string,
+  /** Feestrad only: every goal of the round. */
+  goals?: readonly RoundGoal[],
 ) {
+  const feest = !!goals && goals.length > 1;
   const theme = themeFor(variant, title),
     copy = roundCopy(variant, title);
   let status: Element[];
   let context: string | undefined;
   let names: string[] = [];
-  if (outcome.kind === "winner") {
+  if (outcome.kind === "winner" && feest) {
+    names = outcome.names;
+    // One line per goal, in wheel order; a goal nobody was left for says so.
+    status = [];
+    goals.forEach((goal, wheel) => {
+      const own = themeFor(goal.variant, goal.title);
+      const index = outcome.wheels?.indexOf(wheel) ?? -1;
+      if (wheel) status.push({ type: "text", text: "\n" });
+      status.push({ type: "text", text: `${own.icon} ` });
+      if (index < 0) {
+        status.push({ type: "text", text: `Niemand meer over voor ${own.drink}` });
+        return;
+      }
+      status.push(mention(outcome.names[index], outcome.mentionIds[index]));
+      status.push({
+        type: "text",
+        text: ` ${outcome.ratings ? "haalde" : "haalt"} ${own.drink}`,
+      });
+      const rating = outcome.ratings?.[index];
+      if (rating) {
+        const display = slackRating(rating.average);
+        status.push(
+          { type: "text", text: " · " },
+          ...display.elements,
+          { type: "text", text: ` ${display.value}` },
+        );
+      }
+    });
+    if (!outcome.ratings && outcome.reviewUntil && reviewLink)
+      status.push(
+        {
+          type: "text",
+          text: `\n⭐ Beoordeel de ${outcome.names.length > 1 ? "halers" : "haler"} tot ${clock.format(outcome.reviewUntil)}: `,
+        },
+        { type: "link", url: reviewLink, text: "Open de ronde" },
+      );
+    context = `${outcome.participants} ${outcome.participants === 1 ? "deed" : "deden"} mee`;
+    if (outcome.ratings) {
+      const count = Math.max(0, ...outcome.ratings.map((r) => r?.count ?? 0));
+      context += count
+        ? ` · ${count} ${count === 1 ? "beoordeling" : "beoordelingen"} in de thread`
+        : " · geen beoordelingen";
+    }
+  } else if (outcome.kind === "winner") {
     names = outcome.names;
     const ratings = outcome.ratings;
     status = [{ type: "text", text: "🏆 " }];
@@ -382,8 +545,8 @@ export function settledCallBody(
         type: "text",
         text:
           outcome.kind === "empty"
-            ? `Niemand deed mee, dus het rad bleef stil. Dan maar zelf ${copy.tap}!`
-            : `Het ${theme.name} kon de reacties niet lezen, dus er is niet gedraaid. Vraag gerust een nieuwe ronde aan.`,
+            ? `Niemand deed mee, dus het rad bleef stil. Dan maar zelf ${feest ? "halen" : copy.tap}!`
+            : `Het ${feest ? feestCopy.name : theme.name} kon de reacties niet lezen, dus er is niet gedraaid. Vraag gerust een nieuwe ronde aan.`,
       },
     ];
   const { elements, blocks } = card(
@@ -393,6 +556,7 @@ export function settledCallBody(
     context,
     title,
     variant === "beer" ? intro : undefined,
+    feest,
   );
   return {
     channel: channelId,
@@ -519,7 +683,7 @@ export function boundBody(
     },
     {
       type: "text",
-      text: ": daar zie je steeds de huidige ronde. Een nieuwe ronde start je door hier /koffierad, /waterrad of /koekrad te typen (met bijvoorbeeld 10 erachter voor tien minuten, of /koekrad taart 10 voor een taartronde). Meedoen doe je door op ☕, 💧 of 🍪 te klikken onder de oproep. Eerdere links van dit kanaal werken niet meer.",
+      text: ": daar zie je steeds de huidige ronde. Een nieuwe ronde start je door hier /koffierad, /waterrad of /koekrad te typen (met bijvoorbeeld 10 erachter voor tien minuten, of /koekrad taart 10 voor een taartronde). Meedoen doe je door op ☕, 💧 of 🍪 te klikken onder de oproep. Typ je een tweede commando terwijl de ronde nog wacht, dan haakt dat rad aan en wordt het een 🌈 Feestrad: per doel één haler, niemand twee keer. Eerdere links van dit kanaal werken niet meer.",
     },
   ]);
 }

@@ -1,6 +1,7 @@
 import type { ReviewOutcome, ReviewProgress } from "./reviews";
 import type { WheelVariant } from "./variant";
 import type {
+  DrawGoal,
   DrawInstruction,
   DrawState,
   Participant,
@@ -17,12 +18,16 @@ export interface PublicBeerWheelSession {
   title?: string;
   participants: readonly Participant[];
   winnerCount: number;
+  /** Feestrad rounds: one wheel per goal, each with its own pool. */
+  goals?: readonly DrawGoal[];
   state: DrawState;
   winnerIds: readonly string[];
   activeDraw?: DrawInstruction;
   expiresAt: string;
   revision: number;
   scheduledDraw?: ScheduledDraw;
+  /** Bierrad channel rounds with enough participants: the party look only, never the draw. */
+  bierfeest?: true;
   /** Counts only, while a channel round can be reviewed. */
   review?: ReviewProgress;
   /** Once a channel round's review has closed: stars per winner, never per voter, never texts. */

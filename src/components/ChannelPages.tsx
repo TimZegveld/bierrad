@@ -6,21 +6,27 @@ import { useChannelPolling } from "../hooks/useChannelPolling";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
 import {
   channelApps,
+  bierfeestCopy,
+  feestCopy,
+  isGoalVariant,
   roundCopy,
   type ChannelApp,
   type ChannelCommand,
   type ChannelRound,
   type ChannelStatus,
   type ChannelVariant,
+  type RoundGoal,
 } from "../../shared/channel";
 import { themeFor, themes } from "../../shared/variant";
 import { DEFAULT_REVIEW_SETTINGS } from "../../shared/reviews";
+import type { SessionController } from "../sessions/SessionController";
 import {
   ChannelApiError,
   channelRequest,
@@ -75,7 +81,9 @@ const appCopy: Record<
         <code>/waterrad 10</code> voor tien minuten of{" "}
         <code>/koekrad taart 10</code> voor een taartronde. Wie op ☕, 💧 of 🍪
         onder de oproep klikt, doet mee. Na de wachttijd draait het rad hier
-        vanzelf en kiest het één haler.
+        vanzelf en kiest het één haler. Typ je een tweede commando terwijl de
+        ronde nog wacht, dan haakt dat rad aan en wordt het een 🌈 Feestrad: één
+        haler per doel, en niemand hoeft er twee te halen.
       </>
     ),
     viewIdle: (
@@ -106,15 +114,108 @@ const appCopy: Record<
     ),
   },
 };
+const feest = (goals?: readonly RoundGoal[]) => (goals?.length ?? 0) > 1;
 /** The name arrives with the first slash command; until then, no name. */
-function channelTitle(variant: ChannelVariant, name?: string, word?: string) {
-  const { icon, name: wheel } = themeFor(variant, word);
+function channelTitle(
+  variant: ChannelVariant,
+  name?: string,
+  word?: string,
+  goals?: readonly RoundGoal[],
+  bierfeest?: boolean,
+) {
+  const { icon, name: wheel } = feest(goals)
+    ? feestCopy
+    : bierfeest && variant === "beer"
+      ? bierfeestCopy
+      : themeFor(variant, word);
   return name
     ? `${icon} ${wheel} van #${name}`
     : `${icon} ${wheel} van dit kanaal`;
 }
-function roundLabel(variant: ChannelVariant, word?: string) {
-  const round = roundCopy(variant, word).round;
+/** "☕ koffie · 💧 water": every goal of a Feestrad. */
+function goalList(goals: readonly RoundGoal[]) {
+  return goals
+    .map((g) => {
+      const theme = themeFor(g.variant, g.title);
+      return `${theme.icon} ${theme.drink}`;
+    })
+    .join(" · ");
+}
+/** How to join the running round in Slack. */
+function joinHint(variant: ChannelVariant, goals?: readonly RoundGoal[]) {
+  return goals && feest(goals)
+    ? `Klik onder de oproep in Slack op wat je wilt halen: ${goalList(goals)}.`
+    : `Klik op ${themes[variant].icon} onder de oproep in Slack om mee te doen.`;
+}
+/**
+ * The goals of the shown round: live from its session, else from the channel
+ * status. A round with one goal has one; no round, none. Display only.
+ */
+function useRoundGoals(
+  controller: SessionController | undefined,
+  round: ChannelRound | null | undefined,
+): readonly RoundGoal[] | undefined {
+  const snapshot = useSyncExternalStore(
+    controller?.subscribe ?? noSubscription,
+    () => controller?.getSnapshot(),
+  );
+  const fromSession = snapshot?.session.goals;
+  const fromStatus = round?.goals;
+  const own: RoundGoal[] | undefined =
+    round && isGoalVariant(round.variant ?? "coffee")
+      ? [
+          {
+            variant: (round.variant ?? "coffee") as RoundGoal["variant"],
+            ...(round.title ? { title: round.title } : {}),
+          },
+        ]
+      : undefined;
+  // Whichever source already knows the most goals: goals only ever join.
+  const best =
+    fromSession && fromSession.length >= (fromStatus?.length ?? 0)
+      ? fromSession
+      : (fromStatus ?? own);
+  const key = round
+    ? (best ?? [])
+        .filter((g) => isGoalVariant(g.variant))
+        .map((g) => `${g.variant}:${g.title ?? ""}`)
+        .join(",")
+    : "";
+  return useMemo(
+    () =>
+      key
+        ? key.split(",").map((part) => {
+            const [variant, title] = part.split(":");
+            return {
+              variant: variant as RoundGoal["variant"],
+              ...(title ? { title } : {}),
+            };
+          })
+        : undefined,
+    [key],
+  );
+}
+/**
+ * Whether the shown round is a Bierfeest, as its server says; undefined until
+ * the first snapshot arrived, so a page opened mid-feest shows no growth.
+ */
+function useBierfeest(controller: SessionController | undefined) {
+  return useSyncExternalStore(controller?.subscribe ?? noSubscription, () => {
+    const live = controller?.getSnapshot().live;
+    return live?.expiresAt ? live.bierfeest === true : undefined;
+  });
+}
+function roundLabel(
+  variant: ChannelVariant,
+  word?: string,
+  goals?: readonly RoundGoal[],
+  bierfeest?: boolean,
+) {
+  const round = feest(goals)
+    ? feestCopy.round
+    : bierfeest && variant === "beer"
+      ? bierfeestCopy.name
+      : roundCopy(variant, word).round;
   return `${round[0].toUpperCase()}${round.slice(1)}`;
 }
 /**
@@ -142,6 +243,8 @@ export function ChannelWheelPage({
   const [draft, setDraft] = useState<ReviewDraft>();
   const live = useRoundController(api, status?.round?.spectatorCapability);
   const over = useRoundOver(live, status?.round?.active ?? true);
+  const goals = useRoundGoals(live, status?.round);
+  const bierfeest = useBierfeest(live);
   /** The round whose draw is being replayed, if any. */
   const [replayOf, setReplayOf] = useState<string>();
   const run = useCallback(
@@ -251,13 +354,16 @@ export function ChannelWheelPage({
         <span className="member-chip" data-in={status.member.participating}>
           {status.member.participating
             ? "Jij doet mee"
-            : `Klik ${themes[variant].icon} in Slack om mee te doen`}
+            : feest(goals)
+              ? "Klik in Slack op wat je wilt halen"
+              : `Klik ${themes[variant].icon} in Slack om mee te doen`}
         </span>
       )}
       {ballot?.submitted && <ReviewThanks closesAt={ballot.closesAt} />}
       {ballot && !ballot.submitted && later === ballot.drawId && (
         <button className="primary" onClick={() => setLater(undefined)}>
-          ⭐ Beoordeel {variant === "beer" ? "de halers" : "de haler"}
+          ⭐ Beoordeel{" "}
+          {variant === "beer" || feest(goals) ? "de halers" : "de haler"}
         </button>
       )}
       <button
@@ -298,7 +404,7 @@ export function ChannelWheelPage({
     <ReviewJoin
       apiUrl={api}
       capability={capability}
-      {...(variant === "beer"
+      {...(variant === "beer" || feest(goals)
         ? { explanation: "Log in om na afloop de halers te beoordelen." }
         : {})}
       viewLink={
@@ -331,12 +437,23 @@ export function ChannelWheelPage({
     const spectator = status.round.spectatorCapability;
     const startAt = Date.parse(status.round.startAt);
     return (
-      <ChannelTheme variant={variant} word={word}>
+      <ChannelTheme
+        variant={variant}
+        word={word}
+        goals={goals}
+        bierfeest={bierfeest}
+      >
         {ballotCard}
         <RoundResult
           controller={live}
-          badge={channelTitle(variant, status.channelName, word)}
-          roundName={roundCopy(variant, word).round}
+          badge={channelTitle(
+            variant,
+            status.channelName,
+            word,
+            goals,
+            bierfeest,
+          )}
+          roundName={roundLabel(variant, word, goals).toLowerCase()}
           today={variant === "beer" && today(startAt)}
           when={startLabel(startAt)}
           replayOpen={replayOf === spectator}
@@ -358,21 +475,33 @@ export function ChannelWheelPage({
   // The fixed channel page: the latest round's live wheel, then the next request.
   if (status.round)
     return (
-      <ChannelTheme variant={variant} word={word}>
+      <ChannelTheme
+        variant={variant}
+        word={word}
+        goals={goals}
+        bierfeest={bierfeest}
+      >
         {ballotCard}
         <div className="channel-live">
           <div className="channel-strip" aria-live="polite">
-            <strong>{channelTitle(variant, status.channelName, word)}</strong>
+            <strong>
+              {channelTitle(
+                variant,
+                status.channelName,
+                word,
+                goals,
+                bierfeest,
+              )}
+            </strong>
             {status.round.active ? (
               <span>
-                {roundLabel(variant, word)}! Het rad draait{" "}
+                {roundLabel(variant, word, goals, bierfeest)}! Het rad draait{" "}
                 {startLabel(Date.parse(status.round.startAt))}
                 <ServerTimeLeft
                   controller={live}
                   startAt={Date.parse(status.round.startAt)}
                 />
-                . Klik op {themes[variant].icon} onder de oproep in Slack om mee
-                te doen.
+                . {joinHint(variant, goals)}
               </span>
             ) : (
               <span>{appCopy[app].again}</span>
@@ -437,6 +566,8 @@ export function ChannelViewPage({
   const [word, setWord] = useState<string>();
   const live = useRoundController(api, round?.spectatorCapability);
   const over = useRoundOver(live, round?.active ?? true);
+  const goals = useRoundGoals(live, round);
+  const bierfeest = useBierfeest(live);
   const [replayOf, setReplayOf] = useState<string>();
   const receiveView = useCallback(
     (result: import("../../shared/channel").ChannelCommandResult) => {
@@ -479,11 +610,16 @@ export function ChannelViewPage({
   if (round && over && live) {
     const startAt = Date.parse(round.startAt);
     return (
-      <ChannelTheme variant={shown} word={word}>
+      <ChannelTheme
+        variant={shown}
+        word={word}
+        goals={goals}
+        bierfeest={bierfeest}
+      >
         <RoundResult
           controller={live}
-          badge={channelTitle(shown, channelName, word)}
-          roundName={roundCopy(shown, word).round}
+          badge={channelTitle(shown, channelName, word, goals, bierfeest)}
+          roundName={roundLabel(shown, word, goals).toLowerCase()}
           today={shown === "beer" && today(startAt)}
           when={startLabel(startAt)}
           replayOpen={replayOf === round.spectatorCapability}
@@ -499,21 +635,27 @@ export function ChannelViewPage({
   }
   if (round)
     return (
-      <ChannelTheme variant={shown} word={word}>
+      <ChannelTheme
+        variant={shown}
+        word={word}
+        goals={goals}
+        bierfeest={bierfeest}
+      >
         <div className="channel-live">
           <div className="channel-strip" aria-live="polite">
-            <strong>{channelTitle(shown, channelName, word)}</strong>
+            <strong>
+              {channelTitle(shown, channelName, word, goals, bierfeest)}
+            </strong>
             <span>
               {round.active ? (
                 <>
-                  {roundLabel(shown, word)}! Het rad draait{" "}
+                  {roundLabel(shown, word, goals, bierfeest)}! Het rad draait{" "}
                   {startLabel(Date.parse(round.startAt))}
                   <ServerTimeLeft
                     controller={live}
                     startAt={Date.parse(round.startAt)}
                   />
-                  . Klik op {themes[shown].icon} onder de oproep in Slack om mee
-                  te doen.
+                  . {joinHint(shown, goals)}
                 </>
               ) : (
                 appCopy[app].again

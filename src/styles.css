@@ -1338,6 +1338,31 @@ footer b {
   break-inside: avoid;
   overflow-wrap: anywhere;
 }
+.participant-drawer-panel ul.with-goals {
+  columns: 1;
+}
+.participant-drawer-panel .participant-odds-note {
+  margin: -4px 0 10px;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.participant-odds-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.participant-odds-row strong {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.participant-goal-odds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 13px;
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+}
 .spectator-stage {
   position: relative;
   flex: 1;
@@ -2152,4 +2177,532 @@ body {
 .shortcut-hint kbd {
   font: inherit;
   font-weight: 700;
+}
+
+/* Feestrad: a Koffierad round that grew several goals. Over the top, on purpose. */
+:root[data-feest="true"] {
+  --rainbow: linear-gradient(
+    90deg,
+    #ff6b6b,
+    #ffa94d,
+    #ffd43b,
+    #69db7c,
+    #4dabf7,
+    #9775fa,
+    #f783ac,
+    #ff6b6b
+  );
+  --text: #2d2340;
+  --bg: #fff7fb;
+  --primary: #7048e8;
+  --primary-hover: #845ef7;
+  --primary-text: #fff;
+  --primary-edge: #5f3dc4;
+  --primary-shadow: #4c2fa3;
+  --primary-depth: 5px;
+  --badge-bg: #fff;
+  --badge-border: #e5dbff;
+  --hub-bg: #fff;
+  --final-bg: #fff4fa;
+  --final-border: #d0bfff;
+  --count-bg: #f3f0ff;
+  --reveal-bg: #ffe066;
+  --reveal-text: #2d2340;
+  --strip-bg: #ffffffcc;
+  --accent-text: #6741d9;
+  background:
+    radial-gradient(circle at 12% 18%, #ffd8e866 0 18%, transparent 40%),
+    radial-gradient(circle at 88% 22%, #d0ebff88 0 16%, transparent 38%),
+    radial-gradient(circle at 70% 88%, #fff3bf88 0 18%, transparent 40%),
+    radial-gradient(circle at 20% 85%, #d3f9d888 0 16%, transparent 38%),
+    var(--bg);
+}
+:root[data-theme="dark"][data-feest="true"] {
+  --text: #f3f0ff;
+  --ink: #f3f0ff;
+  --on-ink: #1a1426;
+  --bg: #17121f;
+  --surface: #211a2c;
+  --surface-raised: #261e33;
+  --surface-soft: #2b2239;
+  --tint: #2b2239;
+  --border: #3b3050;
+  --primary: #b197fc;
+  --primary-hover: #c5b3ff;
+  --primary-text: #1a1426;
+  --primary-edge: #7950f2;
+  --primary-shadow: #5f3dc4;
+  --badge-bg: #211a2c;
+  --badge-border: #4b3d66;
+  --hub-bg: #261e33;
+  --final-bg: #211a2c;
+  --final-border: #6741d9;
+  --count-bg: #2b2239;
+  --strip-bg: #211a2ccc;
+  --accent-text: #d0bfff;
+  --wheel-face: #261e33;
+  background:
+    radial-gradient(circle at 12% 18%, #f783ac22 0 18%, transparent 40%),
+    radial-gradient(circle at 88% 22%, #4dabf722 0 16%, transparent 38%),
+    radial-gradient(circle at 70% 88%, #ffd43b1c 0 18%, transparent 40%),
+    var(--bg);
+}
+/* A rainbow bar along the top, always moving. */
+:root[data-feest="true"] body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  height: 6px;
+  z-index: 20;
+  background: var(--rainbow);
+  background-size: 200% 100%;
+  animation: feest-slide 4s linear infinite;
+}
+:root[data-feest="true"] .channel-strip {
+  border-bottom: 3px solid transparent;
+  border-image: var(--rainbow) 1;
+  backdrop-filter: blur(6px);
+}
+:root[data-feest="true"] :is(.spectator-intro h1, .round-result h1, .channel-page h1) {
+  background: var(--rainbow);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: feest-slide 6s linear infinite;
+}
+:root[data-feest="true"] .wheel-tile {
+  /* The frame lives inside the grid column, so the wheel shrinks to fit it. */
+  --frame: 12px;
+  position: relative;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 8px;
+  border-radius: 28px;
+  background:
+    linear-gradient(var(--surface-strong, #fff), var(--surface-strong, #fff)) padding-box,
+    conic-gradient(from var(--feest-turn, 0deg), #ff6b6b, #ffa94d, #ffd43b, #69db7c, #4dabf7, #9775fa, #f783ac, #ff6b6b) border-box;
+  border: 4px solid transparent;
+  animation: feest-turn 8s linear infinite;
+}
+:root[data-theme="dark"][data-feest="true"] .wheel-tile {
+  background:
+    linear-gradient(var(--surface), var(--surface)) padding-box,
+    conic-gradient(from var(--feest-turn, 0deg), #ff6b6b, #ffa94d, #ffd43b, #69db7c, #4dabf7, #9775fa, #f783ac, #ff6b6b) border-box;
+}
+:root[data-feest="true"] .wheel-label {
+  font-size: 12px;
+  color: var(--text);
+}
+:root[data-feest="true"] .wheel-reveal.revealed {
+  background: var(--rainbow);
+  background-size: 200% 100%;
+  animation: feest-slide 3s linear infinite;
+  color: #2d2340;
+}
+:root[data-feest="true"] .friday-badge {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(var(--badge-bg), var(--badge-bg)) padding-box,
+    var(--rainbow) border-box;
+}
+.feest-lines {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: clamp(18px, 2.4vw, 30px);
+  font-weight: 700;
+}
+:root[data-feest="true"] .wheel-tile .wheel-shell,
+:root[data-feest="true"] .spectator .wheel-grid .wheel-tile .wheel-shell {
+  width: min(100%, calc(var(--wheel, 510px) - 2 * var(--frame)));
+}
+:root[data-feest="true"] .spectator .wheel-grid .wheel-tile .wheel-reveal {
+  max-width: calc(var(--wheel) - 2 * var(--frame));
+}
+/* While a Feestrad waits, the rainbow slowly travels around the names. */
+:root[data-feest="true"] .wheel-shell.is-waiting .wheel-segment {
+  transition: fill 0.85s linear;
+}
+@property --feest-turn {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes feest-turn {
+  to {
+    --feest-turn: 360deg;
+  }
+}
+@keyframes feest-slide {
+  to {
+    background-position: 200% 0;
+  }
+}
+/* The moment a round grows: a card over everything, then it goes. */
+.feest-growth {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  animation: feest-fade 7s ease forwards;
+}
+.feest-growth-card {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 28px 32px;
+  border-radius: 28px;
+  text-align: center;
+  color: #2d2340;
+  border: 5px solid transparent;
+  background:
+    linear-gradient(#fff, #fff) padding-box,
+    var(--rainbow, linear-gradient(90deg, #ff6b6b, #ffd43b, #4dabf7, #9775fa)) border-box;
+  box-shadow: 0 24px 60px rgb(45 35 64 / 30%);
+  animation: feest-pop 0.6s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+.feest-growth-card strong {
+  font-size: clamp(24px, 4vw, 40px);
+  line-height: 1.1;
+}
+.feest-growth-icons {
+  font-size: clamp(40px, 7vw, 72px);
+}
+@keyframes feest-pop {
+  from {
+    scale: 0.4;
+    rotate: -8deg;
+  }
+}
+@keyframes feest-fade {
+  85% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-feest="true"] body::before,
+  :root[data-feest="true"] .wheel-tile,
+  .feest-growth,
+  .feest-growth-card {
+    animation: none !important;
+  }
+}
+/* Bierfeest: a Bierrad round with a big turnout. Gold, amber and foam, over the top. */
+:root[data-bierfeest="true"] {
+  --gold: linear-gradient(
+    90deg,
+    #c97a12,
+    #f59f00,
+    #ffd43b,
+    #fff3bf,
+    #ffd43b,
+    #f59f00,
+    #c97a12
+  );
+  --gold-turn: conic-gradient(
+    from var(--feest-turn, 0deg),
+    #c97a12,
+    #f59f00,
+    #ffd43b,
+    #fff8e1,
+    #ffd43b,
+    #f59f00,
+    #c97a12
+  );
+  --bg: #fff8e6;
+  --primary: #f59f00;
+  --primary-hover: #ffb31a;
+  --primary-text: #2b1d05;
+  --primary-edge: #7a4a06;
+  --primary-shadow: #5c3703;
+  --primary-depth: 5px;
+  --badge-bg: #fffdf5;
+  --badge-border: #f2c86b;
+  --hub-bg: #fffaf0;
+  --final-bg: #fff6dc;
+  --final-border: #f2c86b;
+  --count-bg: #fff0c2;
+  --reveal-bg: #ffd43b;
+  --reveal-text: #2b1d05;
+  --strip-bg: #fffaf0cc;
+  --accent-text: #9a5b05;
+  background:
+    radial-gradient(circle at 15% 12%, #ffe8a366 0 16%, transparent 40%),
+    radial-gradient(circle at 85% 20%, #ffd8a866 0 14%, transparent 36%),
+    radial-gradient(circle at 50% 100%, #ffe08a55 0 26%, transparent 55%),
+    var(--bg);
+}
+:root[data-theme="dark"][data-bierfeest="true"] {
+  --text: #fff4d6;
+  --ink: #fff4d6;
+  --on-ink: #1f1606;
+  --bg: #1a1306;
+  --surface: #241a09;
+  --surface-raised: #2a1f0b;
+  --surface-soft: #30230c;
+  --tint: #30230c;
+  --border: #4a3714;
+  --primary: #ffc233;
+  --primary-hover: #ffd166;
+  --primary-text: #1f1606;
+  --primary-edge: #b77a0a;
+  --primary-shadow: #7a4f06;
+  --badge-bg: #241a09;
+  --badge-border: #6b4d12;
+  --hub-bg: #2a1f0b;
+  --final-bg: #241a09;
+  --final-border: #a8700d;
+  --count-bg: #30230c;
+  --strip-bg: #241a09cc;
+  --accent-text: #ffd166;
+  --wheel-face: #2a1f0b;
+  background:
+    radial-gradient(circle at 15% 12%, #f59f0022 0 16%, transparent 40%),
+    radial-gradient(circle at 85% 20%, #ffd43b1a 0 14%, transparent 36%),
+    radial-gradient(circle at 50% 100%, #f59f0026 0 26%, transparent 55%),
+    var(--bg);
+}
+/* A foam head along the top: a frothy white edge over flowing gold. */
+:root[data-bierfeest="true"] body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  height: 10px;
+  z-index: 20;
+  background:
+    radial-gradient(circle at 8px 0, #fff 5px, transparent 5.5px) 0 0 / 16px 8px repeat-x,
+    var(--gold) 0 0 / 200% 100%;
+  animation: bierfeest-foam 5s linear infinite;
+}
+/* Bubbles rising behind everything; display only. */
+:root[data-bierfeest="true"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle, #ffffffcc 0 3px, #f59f0055 3.5px, transparent 4.5px),
+    radial-gradient(circle, #ffffffaa 0 2px, #f59f0044 2.5px, transparent 3.5px),
+    radial-gradient(circle, #ffffff99 0 5px, #f59f0033 5.5px, transparent 7px);
+  background-size: 180px 220px, 120px 160px, 260px 340px;
+  background-position: 20px 0, 70px 40px, 140px 90px;
+  opacity: 0.7;
+  animation: bierfeest-bubbles 14s linear infinite;
+}
+:root[data-theme="dark"][data-bierfeest="true"] body::after {
+  opacity: 0.25;
+}
+:root[data-bierfeest="true"] .channel-strip {
+  border-bottom: 3px solid transparent;
+  border-image: var(--gold) 1;
+  backdrop-filter: blur(6px);
+}
+:root[data-bierfeest="true"] :is(.spectator-intro h1, .round-result h1, .channel-page h1) {
+  background: linear-gradient(90deg, #9a5b05, #e67700, #f59f00, #c97a12, #9a5b05);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: feest-slide 6s linear infinite;
+}
+:root[data-theme="dark"][data-bierfeest="true"] :is(.spectator-intro h1, .round-result h1, .channel-page h1) {
+  background-image: var(--gold);
+}
+:root[data-bierfeest="true"] .wheel-tile {
+  /* The frame lives inside the grid column, so the wheel shrinks to fit it. */
+  --frame: 12px;
+  position: relative;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 8px;
+  border-radius: 28px;
+  background:
+    linear-gradient(var(--surface-strong, #fff), var(--surface-strong, #fff)) padding-box,
+    var(--gold-turn) border-box;
+  border: 4px solid transparent;
+  box-shadow: 0 0 28px #f59f0040;
+  animation: feest-turn 8s linear infinite;
+}
+:root[data-theme="dark"][data-bierfeest="true"] .wheel-tile {
+  background:
+    linear-gradient(var(--surface), var(--surface)) padding-box,
+    var(--gold-turn) border-box;
+}
+:root[data-bierfeest="true"] .wheel-tile .wheel-shell,
+:root[data-bierfeest="true"] .spectator .wheel-grid .wheel-tile .wheel-shell {
+  width: min(100%, calc(var(--wheel, 510px) - 2 * var(--frame)));
+}
+:root[data-bierfeest="true"] .spectator .wheel-grid .wheel-tile .wheel-reveal {
+  max-width: calc(var(--wheel) - 2 * var(--frame));
+}
+:root[data-bierfeest="true"] .wheel-reveal.revealed {
+  background: var(--gold);
+  background-size: 200% 100%;
+  animation: feest-slide 3s linear infinite;
+  color: #2b1d05;
+}
+:root[data-bierfeest="true"] .friday-badge {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(var(--badge-bg), var(--badge-bg)) padding-box,
+    var(--gold) border-box;
+}
+/* While a Bierfeest waits, the gold slowly travels around the names. */
+:root[data-bierfeest="true"] .wheel-shell.is-waiting .wheel-segment {
+  transition: fill 0.85s linear;
+}
+.bierfeest-growth .feest-growth-card {
+  color: #2b1d05;
+  background:
+    linear-gradient(#fffdf5, #fffdf5) padding-box,
+    linear-gradient(90deg, #c97a12, #f59f00, #ffd43b, #f59f00, #c97a12) border-box;
+  box-shadow: 0 24px 60px rgb(122 74 6 / 35%);
+}
+@keyframes bierfeest-foam {
+  to {
+    background-position: 0 0, 200% 0;
+  }
+}
+@keyframes bierfeest-bubbles {
+  to {
+    background-position: 20px -220px, 70px -280px, 140px -590px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-bierfeest="true"] body::before,
+  :root[data-bierfeest="true"] body::after,
+  :root[data-bierfeest="true"] .wheel-tile,
+  :root[data-bierfeest="true"] .wheel-reveal.revealed,
+  :root[data-bierfeest="true"] :is(.spectator-intro h1, .round-result h1, .channel-page h1) {
+    animation: none !important;
+  }
+}
+.review-goal {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* Feestrad finale: more confetti, swaying as it falls. */
+.confetti.party i {
+  top: -30px;
+  animation-name: fall-sway;
+  animation-timing-function: cubic-bezier(0.25, 0.4, 0.6, 1);
+}
+@keyframes fall-sway {
+  30% {
+    translate: calc(var(--sway, 40px) * -0.5) 30vh;
+  }
+  65% {
+    translate: var(--sway, 40px) 68vh;
+  }
+  to {
+    translate: calc(var(--sway, 40px) * 0.3) 108vh;
+    rotate: 900deg;
+  }
+}
+/* Feestrad finale: rainbow fireworks over the wheels. */
+.fireworks {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 11;
+}
+.firework {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+.firework-rocket {
+  position: absolute;
+  left: -2px;
+  top: 0;
+  width: 4px;
+  height: 22px;
+  border-radius: 2px;
+  background: linear-gradient(to top, transparent, var(--color));
+  opacity: 0;
+  animation: rocket 0.7s ease-out var(--delay) both;
+}
+@keyframes rocket {
+  from {
+    opacity: 1;
+    translate: 0 70vh;
+  }
+  90% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    translate: 0 0;
+  }
+}
+.firework-flash {
+  position: absolute;
+  left: -40px;
+  top: -40px;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 12%, var(--color) 30%, transparent 70%);
+  opacity: 0;
+  scale: 0.2;
+  animation: flash 0.6s ease-out calc(var(--delay) + 0.68s) both;
+}
+@keyframes flash {
+  30% {
+    opacity: 0.9;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    scale: 1.6;
+  }
+}
+.firework i {
+  position: absolute;
+  left: -3px;
+  top: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color);
+  box-shadow: 0 0 8px var(--color), 0 0 2px #fff;
+  opacity: 0;
+  rotate: var(--angle);
+  animation: spark 1.5s cubic-bezier(0.1, 0.7, 0.3, 1) calc(var(--delay) + 0.68s) both;
+}
+.firework i:nth-child(odd) {
+  background: var(--color-2);
+  box-shadow: 0 0 8px var(--color-2), 0 0 2px #fff;
+}
+@keyframes spark {
+  from {
+    opacity: 1;
+    translate: 0 0;
+  }
+  70% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    /* Out along its own angle, then sinking a little. */
+    transform: translateY(calc(var(--reach) * -1)) translateX(0);
+    translate: 0 24px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fireworks {
+    display: none;
+  }
 }

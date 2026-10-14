@@ -8,7 +8,12 @@ import {
 import { useTheme } from "../Theme";
 import type { SessionController } from "../sessions/SessionController";
 import { advanceDraw, sessionWinners } from "../domain/drawEngine";
-import { countLabel, joinNames, resultShownAt } from "../domain/presentation";
+import {
+  countLabel,
+  feestLines,
+  joinNames,
+  resultShownAt,
+} from "../domain/presentation";
 import { reviewLabels, type ReviewOutcome } from "../../shared/reviews";
 import { SpectatorView } from "./SpectatorView";
 
@@ -77,6 +82,8 @@ export function RoundResult({
     controller.getSnapshot,
   );
   const winners = sessionWinners(session);
+  // A Feestrad names each winner's goal.
+  const lines = feestLines(session, winners);
   const outcomes = live?.reviewOutcomes ?? [];
   const drawn = winners.length > 0;
   if (replayOpen && drawn)
@@ -104,16 +111,22 @@ export function RoundResult({
         <section className="round-result-winners">
           <span className="eyebrow">{theme.finale}</span>
           <ul className="winner-names" aria-label={`De ${theme.haler}s`}>
-            {winners.map((winner) => (
-              <li key={winner.id}>
-                {theme.winnerIcon} {winner.name}
-              </li>
-            ))}
+            {lines
+              ? lines.map((l) => (
+                  <li key={l.id}>
+                    {l.icon} {l.line}
+                  </li>
+                ))
+              : winners.map((winner) => (
+                  <li key={winner.id}>
+                    {theme.winnerIcon} {winner.name}
+                  </li>
+                ))}
           </ul>
           <p>
-            {joinNames(winners.map((winner) => winner.name))}{" "}
-            {winners.length === 1 ? theme.resultOne : theme.resultMany}{" "}
-            {theme.ending}
+            {lines
+              ? `${theme.ending}`
+              : `${joinNames(winners.map((winner) => winner.name))} ${winners.length === 1 ? theme.resultOne : theme.resultMany} ${theme.ending}`}
           </p>
           <p className="helper">
             Gedraaid {when} ·{" "}
@@ -142,12 +155,12 @@ const average = new Intl.NumberFormat("nl-NL", {
 /** The anonymous stars per haler; the texts stay in the thread. */
 function RoundReviews({ outcomes }: { outcomes: readonly ReviewOutcome[] }) {
   const theme = useTheme();
-  const labels = reviewLabels[theme.variant];
   return (
     <section className="round-result-reviews" aria-label="Beoordeling">
       <span className="eyebrow">⭐ Beoordeling</span>
       {outcomes.map((outcome, i) => {
         const stars = Math.min(5, Math.max(1, Math.round(outcome.average)));
+        const labels = reviewLabels[outcome.goal?.variant ?? theme.variant];
         return (
           <article key={i} className="round-review">
             <h2>{outcome.name}</h2>

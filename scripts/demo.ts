@@ -5,8 +5,11 @@
  * in memory, on 127.0.0.1, with synthetic credentials and six made-up
  * colleagues. Nothing here reaches Slack, Cloudflare or production.
  *
- *   npm run demo        →   a Koffierad round (`/koffierad 15`)
- *   npm run demo:bier   →   a Bierrad round (`/bierrad` with an own text)
+ *   npm run demo        →   a Koffierad round (`/koffierad 15`); the panel
+ *                           can let `/waterrad` and `/koekrad taart` join it
+ *                           as a Feestrad
+ *   npm run demo:bier   →   a Bierrad round (`/bierrad` with an own text); the
+ *                           panel can let 16 more colleagues join for a Bierfeest
  *   then open http://127.0.0.1:8787/__demo/
  */
 import { spawn } from "node:child_process";
@@ -39,7 +42,13 @@ const PEOPLE: Record<string, string> = {
   U0DEMO005: "Lotte",
   U0DEMO006: "Sem",
 };
-const NAMES: Record<string, string> = { ...PEOPLE, [ADMIN]: "Demo-beheerder", [BOT]: OWN.name };
+/** `npm run demo:bier`: sixteen more colleagues who react at once, enough for a Bierfeest. */
+const CROWD: Record<string, string> = Object.fromEntries(
+  ["Daan", "Eva", "Finn", "Iris", "Jesse", "Lieke", "Milan", "Noor", "Pim", "Roos", "Stijn", "Tess", "Vince", "Yara", "Wouter", "Zoë"]
+    .map((name, i) => [`U0DEMO${String(101 + i)}`, name]),
+);
+let crowd = false;
+const NAMES: Record<string, string> = { ...PEOPLE, ...CROWD, [ADMIN]: "Demo-beheerder", [BOT]: OWN.name };
 const REVIEWS = APP === "beer" ? [
   "Koud, op tijd en precies genoeg.",
   "Speciaalbiertjes erbij, wat een held.",
@@ -60,8 +69,14 @@ interface Message {
   text: string;
   blocks?: unknown[];
   edited?: boolean;
-  reactions?: { name: string; users: string[] };
+  broadcast?: boolean;
+  reactions?: { name: string; users: string[] }[];
 }
+/** Who clicks which emoji: everyone wants coffee, fewer want water or taart. */
+const FANS: Record<string, string[]> = {
+  droplet: ["U0DEMO001", "U0DEMO003", "U0DEMO004"],
+  cookie: ["U0DEMO002", "U0DEMO003", "U0DEMO006"],
+};
 const messages: Message[] = [];
 let ts = 1700000000000000;
 /** Who reacts with ☕ on each call, and from when: the wheel fills up. */
@@ -109,6 +124,15 @@ export class DemoSession extends LiveSession {
       if (r.scheduledDraw && !["skipped", "refreshing"].includes(r.scheduledDraw.status))
         r.scheduledDraw.startAt = new Date(startAt).toISOString();
     });
+    return this.alarm();
+  }
+  async demoRefresh() {
+    const record = this.read();
+    if (!record?.slack?.source) return;
+    delete record.slack.nextImportAt;
+    delete record.slack.retryImportAt;
+    this.save(record);
+    await this.importSlack(record).catch(() => {});
     return this.alarm();
   }
   async demoOpenVoting() {
@@ -233,25 +257,31 @@ async function slack(req: Request): Promise<Response> {
     case "reactions.add": {
       const message = messages.find((m) => m.ts === body.timestamp);
       if (message) {
-        message.reactions = { name: body.name, users: [BOT] };
-        // Six colleagues click ☕ one after another.
-        Object.keys(PEOPLE).forEach((id, i) => joins.set(`${message.ts}/${id}`, Date.now() + 1500 * (i + 1)));
+        (message.reactions ??= []).push({ name: body.name, users: [BOT] });
+        // Colleagues click the emoji one after another.
+        (FANS[body.name] ?? Object.keys(PEOPLE)).forEach((id, i) =>
+          joins.set(`${message.ts}/${body.name}/${id}`, Date.now() + 1500 * (i + 1)));
       }
       return Response.json({ ok: true });
     }
     case "reactions.get": {
       const message = messages.find((m) => m.ts === url.searchParams.get("timestamp"));
-      const users = [BOT, ...Object.keys(PEOPLE).filter((id) => (joins.get(`${message?.ts}/${id}`) ?? Infinity) <= Date.now())];
-      if (message?.reactions) message.reactions.users = users;
+      for (const reaction of message?.reactions ?? [])
+        reaction.users = [BOT, ...Object.keys(PEOPLE).filter((id) =>
+          (joins.get(`${message!.ts}/${reaction.name}/${id}`) ?? Infinity) <= Date.now()),
+          ...(crowd && reaction.name === "beers" ? Object.keys(CROWD) : [])];
       return Response.json({
         ok: true,
         type: "message",
         channel: CHANNEL,
-        message: { ts: message?.ts, reactions: message?.reactions ? [{ name: message.reactions.name, count: users.length, users }] : [] },
+        message: {
+          ts: message?.ts,
+          reactions: (message?.reactions ?? []).map((r) => ({ name: r.name, count: r.users.length, users: r.users })),
+        },
       });
     }
     case "chat.postMessage": {
-      const message: Message = { ts: nextTs(), text: body.text ?? "", blocks: body.blocks, ...(body.thread_ts ? { thread: body.thread_ts } : {}) };
+      const message: Message = { ts: nextTs(), text: body.text ?? "", blocks: body.blocks, ...(body.thread_ts ? { thread: body.thread_ts } : {}), ...(body.reply_broadcast ? { broadcast: true } : {}) };
       messages.push(message);
       return Response.json({ ok: true, channel: body.channel, ts: message.ts });
     }
@@ -352,6 +382,7 @@ async function round() {
     session: sessions.get(sessions.idFromName(await wordLocator(live.spectatorCapability))) as unknown as {
       demoStartAt(at: number): Promise<void>;
       demoOpenVoting(): Promise<void>;
+      demoRefresh(): Promise<void>;
       demoCloseVoting(): Promise<void>;
       demoInfo(): Promise<{ state: string; startAt?: string; review?: { status: string; opensAt?: number; closesAt?: number } } | undefined>;
     },
@@ -373,15 +404,20 @@ async function startSoon() {
  * Rounds start only from Slack: a signed fake `/koffierad 15`, or a
  * `/bierrad` a quarter of an hour from now with an own text, as Slack would send it.
  */
-async function requestRound() {
-  autoCountdown = true;
+async function requestRound(join?: "/waterrad" | "/koekrad") {
+  if (!join) autoCountdown = true;
   const beer = APP === "beer";
   const time = amsterdamInput(Date.now() + 16 * 60000).slice(11).replace(":", ".");
   const text = beer
     ? `${time} 🇩🇪 De Lederhosen zijn weer opgeborgen… hoog tijd voor de *Westlandse vrijdagtraditie die wél iedere week doorgaat.* :beers:`
-    : "15";
+    : join === "/koekrad"
+      ? "taart"
+      : join
+        ? ""
+        : "15";
+  const command = beer ? "/bierrad" : (join ?? "/koffierad");
   const body = new URLSearchParams({
-    command: beer ? "/bierrad" : "/koffierad",
+    command,
     text,
     user_id: ADMIN,
     team_id: TEAM,
@@ -411,7 +447,7 @@ async function requestRound() {
     })();
     throw new Error(text ?? (reply || String(response.status)));
   }
-  log(`${beer ? `/bierrad ${time} …` : "/koffierad 15"} getypt; de oproep staat in het nep-Slack-kanaal`);
+  log(`${beer ? `/bierrad ${time} …` : `${command} ${text}`} getypt; ${join ? "het rad haakt aan als Feestrad" : "de oproep staat in het nep-Slack-kanaal"}`);
 }
 /** Everyone but you (and the haler, whom the server refuses) votes. */
 async function othersVote() {
@@ -466,7 +502,13 @@ async function demo(req: Request): Promise<Response> {
     const action = path.slice("/action/".length);
     try {
       if (action === "round") await requestRound();
+      else if (action === "water" && APP === "coffee") await requestRound("/waterrad");
+      else if (action === "cookie" && APP === "coffee") await requestRound("/koekrad");
       else if (action === "start") await startSoon();
+      else if ((action === "crowd" || action === "quiet") && APP === "beer") {
+        crowd = action === "crowd";
+        await (await round())?.session.demoRefresh();
+      }
       else if (action === "open") await (await round())?.session.demoOpenVoting();
       else if (action === "close") await (await round())?.session.demoCloseVoting();
       else if (action === "others") return Response.json({ ok: true, note: `${await othersVote()} collega's hebben gestemd.` });
@@ -530,6 +572,10 @@ ol{margin:0;padding:14px 14px 14px 32px;font-size:14px;line-height:1.6}#note{min
 <button data-action="others">🗳️ Laat de andere deelnemers stemmen</button>
 <button data-action="close">🔒 Sluit stemmen nu</button>
 <button data-action="round">${APP === "beer" ? "🍻 Nieuwe bierronde (over 15 min)" : "☕ Nieuwe koffieronde (15 min)"}</button>
+${APP === "beer" ? `<button data-action="crowd">🎉 Nog 16 collega's klikken 🍻: het wordt een Bierfeest</button>
+<button data-action="quiet">↩️ Die 16 haken weer af: terug naar een gewone bierronde</button>` : ""}
+${APP === "coffee" ? `<button data-action="water">💧 Typ /waterrad: haakt aan, het rad wordt een Feestrad 🌈</button>
+<button data-action="cookie">🍪 Typ /koekrad taart: het Feestrad groeit</button>` : ""}
 <div id="note" role="status"></div></div><div class="status" id="status"></div></section>
 </div></div>
 <script>
@@ -540,7 +586,7 @@ function inline(e) {
   if (e.type === "text") { let t = esc(e.text); if (e.style && e.style.bold) t = "<b>" + t + "</b>"; if (e.style && e.style.italic) t = "<i>" + t + "</i>"; return t; }
   if (e.type === "link") return '<a href="' + esc(e.url) + '" target="_blank" rel="noopener">' + esc(e.text || e.url) + "</a>";
   if (e.type === "user") return "<b>@" + esc(names[e.user_id] || e.user_id) + "</b>";
-  if (e.type === "emoji") return ({ beers: "🍻", coffee: "☕", "spin-the-wheel": "🎡", spinner: "🌀", star: "⭐" })[e.name] || ":" + esc(e.name) + ":";
+  if (e.type === "emoji") return ({ beers: "🍻", coffee: "☕", droplet: "💧", cookie: "🍪", "spin-the-wheel": "🎡", spinner: "🌀", star: "⭐" })[e.name] || ":" + esc(e.name) + ":";
   if (e.type === "mrkdwn" || e.type === "plain_text") return esc(e.text);
   if (e.type === "rich_text_quote") return "<blockquote>" + (e.elements || []).map(inline).join("") + "</blockquote>";
   if (e.type === "rich_text_list") return (e.border ? "<blockquote>" : "") + "<ul>" + (e.elements || []).map((s) => "<li>" + (s.elements || []).map(inline).join("") + "</li>").join("") + "</ul>" + (e.border ? "</blockquote>" : "");
@@ -550,8 +596,9 @@ function inline(e) {
 function render(m) {
   const who = ${JSON.stringify(OWN.name)};
   const body = m.blocks && m.blocks.length ? m.blocks.map(inline).join("\\n").replace(/\\n+$/, "") : esc(m.text);
-  const reaction = m.reactions ? '<div><span class="reaction">' + (m.reactions.name === "coffee" ? "☕" : m.reactions.name === "droplet" ? "💧" : m.reactions.name === "beers" ? "🍻" : ":" + esc(m.reactions.name) + ":") + " " + m.reactions.users.length + "</span></div>" : "";
-  return '<div class="msg"><div class="avatar">${OWN.icon}</div><div><span class="who">' + who + '</span><span class="when">APP</span>' +
+  const icon = (name) => ({ coffee: "☕", droplet: "💧", cookie: "🍪", beers: "🍻" })[name] || ":" + esc(name) + ":";
+  const reaction = m.reactions && m.reactions.length ? "<div>" + m.reactions.map((r) => '<span class="reaction">' + icon(r.name) + " " + r.users.length + "</span>").join(" ") + "</div>" : "";
+  return '<div class="msg"><div class="avatar">${OWN.icon}</div><div><span class="who">' + who + '</span><span class="when">APP</span>' + (m.broadcast ? '<div class="edited">Ook verzonden naar het kanaal</div>' : "") +
     '<div class="body">' + body + (m.edited ? ' <span class="edited">(bewerkt)</span>' : "") + "</div>" + reaction + "</div></div>";
 }
 const time = (t) => t ? new Date(t).toLocaleTimeString("nl-NL") : "–";

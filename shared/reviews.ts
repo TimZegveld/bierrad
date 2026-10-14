@@ -1,3 +1,4 @@
+import type { RoundGoal } from "./channel";
 /** Public contract for round reviews. No Slack IDs, pseudonyms or capabilities. */
 import type { WheelVariant } from "./variant";
 
@@ -52,12 +53,15 @@ export interface ReviewOutcome {
   name: string;
   average: number;
   count: number;
+  /** Feestrad only: what this haler fetched; display only. */
+  goal?: RoundGoal;
 }
 /** One person's ballot: only the winners they may review, never themselves. */
 export interface ReviewBallot {
   drawId: string;
   closesAt: string;
-  winners: { index: number; name: string }[];
+  /** `goal`: Feestrad only, what this haler fetched; display only. */
+  winners: { index: number; name: string; goal?: RoundGoal }[];
   submitted: boolean;
 }
 /** Aligned with the ballot's winners, in the same order. */

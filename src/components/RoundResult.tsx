@@ -155,12 +155,12 @@ const average = new Intl.NumberFormat("nl-NL", {
 /** The anonymous stars per haler; the texts stay in the thread. */
 function RoundReviews({ outcomes }: { outcomes: readonly ReviewOutcome[] }) {
   const theme = useTheme();
-  const labels = reviewLabels[theme.variant];
   return (
     <section className="round-result-reviews" aria-label="Beoordeling">
       <span className="eyebrow">⭐ Beoordeling</span>
       {outcomes.map((outcome, i) => {
         const stars = Math.min(5, Math.max(1, Math.round(outcome.average)));
+        const labels = reviewLabels[outcome.goal?.variant ?? theme.variant];
         return (
           <article key={i} className="round-review">
             <h2>{outcome.name}</h2>

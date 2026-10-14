@@ -10,7 +10,7 @@ import { addGoal, queueResult, reconcile, resultBody } from "../slack/state";
 import { newSession, publicSession, type StoredSession } from "../session";
 import { feestCallBody, joinBody, settledCallBody } from "../channel/messages";
 import { startDraw } from "../../src/domain/drawEngine";
-import { openReview, reviewBallot } from "../reviews";
+import { closeReview, openReview, reviewBallot, reviewOutcomes, submitReview } from "../reviews";
 import { validGoals, type ChannelCommandResult } from "../../shared/channel";
 import type { PublicBeerWheelSession } from "../../shared/protocol";
 
@@ -165,16 +165,33 @@ test("the joint draw gives each goal its own winner; the result names their goal
   assert.ok(JSON.stringify(settled.blocks).includes('"user_id":"U00000002"'));
 });
 
-test("the review ballot labels every haler with their goal", () => {
+test("the review ballot labels every haler with their goal, only for the wheels you joined", () => {
   const r = drawnFeest();
   r.review = { minutes: 15, key: "synthetic", link: "https://example.test/", status: "waiting" };
   const pseudonyms = new Map(Object.keys(r.slack!.mapping).map((id) => [id, `p-${id}`]));
   openReview(r, pseudonyms);
   const at = r.review.opensAt! + 1;
-  const ballot = reviewBallot(r, "p-U00000002", at)!;
-  assert.deepEqual(ballot.winners, [
-    { index: 1, name: "Alice", goal: { variant: "water" } },
+  // Bob joined coffee (he won it) and taart, not water.
+  assert.deepEqual(reviewBallot(r, "p-U00000002", at)!.winners, [
     { index: 2, name: "Carol", goal: { variant: "cookie", title: "taart" } },
+  ]);
+  // Alice joined coffee and water (she won it), not taart.
+  assert.deepEqual(reviewBallot(r, "p-U00000001", at)!.winners, [
+    { index: 0, name: "Bob", goal: { variant: "coffee" } },
+  ]);
+  // Carol only joined the taart she won: nothing to review, so not asked.
+  assert.equal(reviewBallot(r, "p-U00000003", at), undefined);
+  assert.deepEqual(r.review.eligible!.sort(), ["p-U00000001", "p-U00000002"]);
+  assert.throws(
+    () => submitReview(r, "p-U00000002", r.review!.drawId, { scores: [5, 5], texts: ["", ""] }, at),
+    /invalid/,
+  );
+  submitReview(r, "p-U00000002", r.review!.drawId, { scores: [4], texts: [""] }, at);
+  assert.deepEqual(r.review.totals!.map((t) => t.count), [0, 0, 1]);
+  // The result page rates the taart in the Koekrad's words, not the call's.
+  closeReview(r, at);
+  assert.deepEqual(reviewOutcomes(r), [
+    { name: "Carol", average: 4, count: 1, goal: { variant: "cookie", title: "taart" } },
   ]);
 });
 

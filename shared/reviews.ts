@@ -53,6 +53,8 @@ export interface ReviewOutcome {
   name: string;
   average: number;
   count: number;
+  /** Feestrad only: what this haler fetched; display only. */
+  goal?: RoundGoal;
 }
 /** One person's ballot: only the winners they may review, never themselves. */
 export interface ReviewBallot {

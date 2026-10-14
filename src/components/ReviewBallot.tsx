@@ -63,7 +63,6 @@ export function ReviewBallotCard({
     onDraftChange({ drawId: ballot.drawId, scores, texts: update(texts) });
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
-  const labels = reviewLabels[variant];
   const where = channelName ? `#${channelName}` : "het kanaal";
   async function submit() {
     const missing = ballot.winners.filter((_, i) => !scores[i]).map((w) => w.name);
@@ -89,52 +88,56 @@ export function ReviewBallotCard({
           Stemmen kan tot {clock.format(Date.parse(ballot.closesAt))}.
         </p>
       </header>
-      {ballot.winners.map((winner, i) => (
-        <fieldset key={winner.index} className="review-winner">
-          <legend>
-            <span>
-              {winner.name}
-              {winner.goal && <GoalTag goal={winner.goal} />}
-            </span>
-            <small aria-live="polite">
-              {scores[i] ? labels[scores[i]! - 1] : "Kies sterren"}
-            </small>
-          </legend>
-          <div className="review-stars" role="radiogroup" aria-label={`Sterren voor ${winner.name}`}>
-            {[1, 2, 3, 4, 5].map((n) => (
-              <button
-                key={n}
-                type="button"
-                role="radio"
-                aria-checked={scores[i] === n}
-                aria-label={`${n} ${n === 1 ? "ster" : "sterren"}: ${labels[n - 1]}`}
-                className={scores[i] && n <= scores[i]! ? "on" : undefined}
-                onClick={() => {
-                  setScores((all) => all.map((s, j) => (j === i ? n : s)));
-                  setError("");
-                }}
-              >
-                ★
-              </button>
-            ))}
-          </div>
-          <label className="review-text">
-            <span className="sr-only">Review voor {winner.name} (optioneel)</span>
-            <textarea
-              maxLength={REVIEW_TEXT_MAX}
-              rows={2}
-              value={texts[i]}
-              placeholder="Wat vond je ervan? (optioneel)"
-              onChange={(e) =>
-                setTexts((all) => all.map((t, j) => (j === i ? e.target.value : t)))
-              }
-            />
-            <small>
-              {texts[i].length} / {REVIEW_TEXT_MAX}
-            </small>
-          </label>
-        </fieldset>
-      ))}
+      {ballot.winners.map((winner, i) => {
+        // A Feestrad's haler is rated in the words of their own wheel.
+        const labels = reviewLabels[winner.goal?.variant ?? variant];
+        return (
+          <fieldset key={winner.index} className="review-winner">
+            <legend>
+              <span>
+                {winner.name}
+                {winner.goal && <GoalTag goal={winner.goal} />}
+              </span>
+              <small aria-live="polite">
+                {scores[i] ? labels[scores[i]! - 1] : "Kies sterren"}
+              </small>
+            </legend>
+            <div className="review-stars" role="radiogroup" aria-label={`Sterren voor ${winner.name}`}>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  role="radio"
+                  aria-checked={scores[i] === n}
+                  aria-label={`${n} ${n === 1 ? "ster" : "sterren"}: ${labels[n - 1]}`}
+                  className={scores[i] && n <= scores[i]! ? "on" : undefined}
+                  onClick={() => {
+                    setScores((all) => all.map((s, j) => (j === i ? n : s)));
+                    setError("");
+                  }}
+                >
+                  ★
+                </button>
+              ))}
+            </div>
+            <label className="review-text">
+              <span className="sr-only">Review voor {winner.name} (optioneel)</span>
+              <textarea
+                maxLength={REVIEW_TEXT_MAX}
+                rows={2}
+                value={texts[i]}
+                placeholder="Wat vond je ervan? (optioneel)"
+                onChange={(e) =>
+                  setTexts((all) => all.map((t, j) => (j === i ? e.target.value : t)))
+                }
+              />
+              <small>
+                {texts[i].length} / {REVIEW_TEXT_MAX}
+              </small>
+            </label>
+          </fieldset>
+        );
+      })}
       <p className="review-note">
         Je review komt anoniem in de thread van {where}. Je kunt maar één keer
         stemmen.

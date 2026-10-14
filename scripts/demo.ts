@@ -8,7 +8,8 @@
  *   npm run demo        →   a Koffierad round (`/koffierad 15`); the panel
  *                           can let `/waterrad` and `/koekrad taart` join it
  *                           as a Feestrad
- *   npm run demo:bier   →   a Bierrad round (`/bierrad` with an own text)
+ *   npm run demo:bier   →   a Bierrad round (`/bierrad` with an own text); the
+ *                           panel can let 16 more colleagues join for a Bierfeest
  *   then open http://127.0.0.1:8787/__demo/
  */
 import { spawn } from "node:child_process";
@@ -41,7 +42,13 @@ const PEOPLE: Record<string, string> = {
   U0DEMO005: "Lotte",
   U0DEMO006: "Sem",
 };
-const NAMES: Record<string, string> = { ...PEOPLE, [ADMIN]: "Demo-beheerder", [BOT]: OWN.name };
+/** `npm run demo:bier`: sixteen more colleagues who react at once, enough for a Bierfeest. */
+const CROWD: Record<string, string> = Object.fromEntries(
+  ["Daan", "Eva", "Finn", "Iris", "Jesse", "Lieke", "Milan", "Noor", "Pim", "Roos", "Stijn", "Tess", "Vince", "Yara", "Wouter", "Zoë"]
+    .map((name, i) => [`U0DEMO${String(101 + i)}`, name]),
+);
+let crowd = false;
+const NAMES: Record<string, string> = { ...PEOPLE, ...CROWD, [ADMIN]: "Demo-beheerder", [BOT]: OWN.name };
 const REVIEWS = APP === "beer" ? [
   "Koud, op tijd en precies genoeg.",
   "Speciaalbiertjes erbij, wat een held.",
@@ -117,6 +124,15 @@ export class DemoSession extends LiveSession {
       if (r.scheduledDraw && !["skipped", "refreshing"].includes(r.scheduledDraw.status))
         r.scheduledDraw.startAt = new Date(startAt).toISOString();
     });
+    return this.alarm();
+  }
+  async demoRefresh() {
+    const record = this.read();
+    if (!record?.slack?.source) return;
+    delete record.slack.nextImportAt;
+    delete record.slack.retryImportAt;
+    this.save(record);
+    await this.importSlack(record).catch(() => {});
     return this.alarm();
   }
   async demoOpenVoting() {
@@ -252,7 +268,8 @@ async function slack(req: Request): Promise<Response> {
       const message = messages.find((m) => m.ts === url.searchParams.get("timestamp"));
       for (const reaction of message?.reactions ?? [])
         reaction.users = [BOT, ...Object.keys(PEOPLE).filter((id) =>
-          (joins.get(`${message!.ts}/${reaction.name}/${id}`) ?? Infinity) <= Date.now())];
+          (joins.get(`${message!.ts}/${reaction.name}/${id}`) ?? Infinity) <= Date.now()),
+          ...(crowd && reaction.name === "beers" ? Object.keys(CROWD) : [])];
       return Response.json({
         ok: true,
         type: "message",
@@ -365,6 +382,7 @@ async function round() {
     session: sessions.get(sessions.idFromName(await wordLocator(live.spectatorCapability))) as unknown as {
       demoStartAt(at: number): Promise<void>;
       demoOpenVoting(): Promise<void>;
+      demoRefresh(): Promise<void>;
       demoCloseVoting(): Promise<void>;
       demoInfo(): Promise<{ state: string; startAt?: string; review?: { status: string; opensAt?: number; closesAt?: number } } | undefined>;
     },
@@ -487,6 +505,10 @@ async function demo(req: Request): Promise<Response> {
       else if (action === "water" && APP === "coffee") await requestRound("/waterrad");
       else if (action === "cookie" && APP === "coffee") await requestRound("/koekrad");
       else if (action === "start") await startSoon();
+      else if ((action === "crowd" || action === "quiet") && APP === "beer") {
+        crowd = action === "crowd";
+        await (await round())?.session.demoRefresh();
+      }
       else if (action === "open") await (await round())?.session.demoOpenVoting();
       else if (action === "close") await (await round())?.session.demoCloseVoting();
       else if (action === "others") return Response.json({ ok: true, note: `${await othersVote()} collega's hebben gestemd.` });
@@ -550,6 +572,8 @@ ol{margin:0;padding:14px 14px 14px 32px;font-size:14px;line-height:1.6}#note{min
 <button data-action="others">🗳️ Laat de andere deelnemers stemmen</button>
 <button data-action="close">🔒 Sluit stemmen nu</button>
 <button data-action="round">${APP === "beer" ? "🍻 Nieuwe bierronde (over 15 min)" : "☕ Nieuwe koffieronde (15 min)"}</button>
+${APP === "beer" ? `<button data-action="crowd">🎉 Nog 16 collega's klikken 🍻: het wordt een Bierfeest</button>
+<button data-action="quiet">↩️ Die 16 haken weer af: terug naar een gewone bierronde</button>` : ""}
 ${APP === "coffee" ? `<button data-action="water">💧 Typ /waterrad: haakt aan, het rad wordt een Feestrad 🌈</button>
 <button data-action="cookie">🍪 Typ /koekrad taart: het Feestrad groeit</button>` : ""}
 <div id="note" role="status"></div></div><div class="status" id="status"></div></section>

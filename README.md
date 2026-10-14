@@ -57,7 +57,7 @@ npm run demo
 
 Eén commando, zonder Slack-app of secrets: bouwt de Worker, draait hem in Miniflare met een nep-Slack ervoor (poort 8787) en start Vite (poort 5173). Open `http://127.0.0.1:8787/__demo/`. Daar staat een nep-Slack-kanaal met een koffieoproep van zes verzonnen collega's. Klik op **Open de ronde**, log in via de nep-inlogpagina als een van de zes, zie het rad 10 seconden aftellen en draaien, en stem daarna. Knoppen op de demopagina slaan de wachtminuut voor het stemmen over, laten de anderen stemmen of starten een nieuwe ronde. De reviews verschijnen in de nep-thread. Alles staat in het geheugen; herstarten wist alles. De tijdhooks (`DemoSession`, `DemoChannel`) worden uitsluitend aan de in-memory demobundle toegevoegd en zitten niet in productie. Stop eerst een lopende `dev:worker` of `dev`, want de demo gebruikt dezelfde poorten.
 
-`npm run demo:bier` doet hetzelfde voor het Bierrad: de bot plaatst een `/bierrad` over een kwartier met een eigen tekst, je klikt op **radje**, logt in, en bij het aftellen verschijnt de herinnering met **Inloggen** en **alleen meekijken** in de thread. Daarna draait het rad met twee halers.
+`npm run demo:bier` doet hetzelfde voor het Bierrad: de bot plaatst een `/bierrad` over een kwartier met een eigen tekst, je klikt op **radje**, logt in, en bij het aftellen verschijnt de herinnering met **Inloggen** en **alleen meekijken** in de thread. Daarna draait het rad met twee halers. Met **🎉 Nog 16 collega's klikken 🍻** groeit de ronde naar 22 deelnemers en wordt het een Bierfeest, met het bericht in de nep-thread. **↩️ Die 16 haken weer af** zet het weer terug.
 
 ## Validatie
 
@@ -182,6 +182,19 @@ Slack-deelname loopt uitsluitend via een aan een kanaal gekoppeld rad: het Bierr
 Koppel het Bierrad aan een kanaal via `#/bier-koppelen` (met de eigen Bierrad-app). Daarna typt iedereen in dat kanaal `/bierrad`: de bot plaatst de vaste oproep (":beers: :spin-the-wheel: Het bierronde radje …") met een 🍻 eronder, en het rad draait vandaag om **15:45** met **twee** halers. Kies zelf met bijvoorbeeld `/bierrad 15.44`, `/bierrad morgen`, `/bierrad vrijdag 16.00 3` of `/bierrad 10-10 16.30`; een tijd die al geweest is, wordt geweigerd. Alles na dag, tijd en aantal is je eigen tekst boven de oproep (emoji en `*vet*` mogen; mentions en links blijven gewone tekst).
 
 "radje" in de oproep opent het vaste rad van het kanaal (`#/bier/…`), waar je **inlogt met Slack** of **alleen meekijkt**. Twee minuten voor de start zet de bot beide links nog eens in de thread. Na de trekking staan de halers met @vermelding in de thread en in de bijgewerkte oproep; deelnemers geven ze daarna anoniem 1–5 sterren (standaard 30 minuten). Op de beheerpagina stel je het standaard aantal halers en de reviews in. Zie [Bierrad instellen](docs/slack-setup.md#bierrad-app-bierrad-in-een-kanaal).
+
+#### Bierfeest 🎉
+
+Doen er **20 of meer** collega's mee aan een `/bierrad`-ronde, dan wordt het een **Bierfeest**:
+- De pagina wordt goud en amber, met een schuimkraag bovenaan, opstijgende bubbels, gouden lijsten om de raderen en gouden kleuren die rond de namen bewegen.
+- Wie meekijkt terwijl de 20 gehaald wordt, ziet "🍻 → 🎉 Het Bierrad wordt een Bierfeest!".
+- De bot zet één keer in de thread "🎉 Al N aanmeldingen: deze bierronde wordt een Bierfeest! 🍻". Dat bericht komt niet in het kanaal.
+- De finale krijgt goud confetti en vuurwerk.
+- Het aantal halers en de trekking veranderen niet; het is alleen de opmaak.
+- Haken mensen af tot onder de 20, dan wordt het zonder melding weer een gewone bierronde. Komt het daarna weer boven de 20, dan volgt geen tweede bericht. Bij de start beslissen de deelnemers die dan meedoen.
+- Alleen de server telt. Een los of lokaal Bierrad wordt nooit een Bierfeest.
+
+Zie de [securityreview](SECURITY.md#bierrad-channel-rounds--reviewed-exception-2026-10-07).
 
 [Appmanifest en veilige instelling](docs/slack-setup.md) · [Security review](docs/slack-security-review.md)
 

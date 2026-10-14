@@ -16,11 +16,7 @@ export type ChannelBindFailure =
   | "busy"
   | "not_in_channel";
 export type MemberLoginFailure =
-  | "denied"
-  | "forbidden"
-  | "expired"
-  | "unavailable"
-  | "busy";
+  "denied" | "forbidden" | "expired" | "unavailable" | "busy";
 export type ChannelRoute = { app: ChannelApp } & (
   | { page: "bind"; failure?: ChannelBindFailure }
   | { page: "memberFailure"; failure: MemberLoginFailure }
@@ -49,7 +45,11 @@ export function parseChannelRoute(hash: string): ChannelRoute | null {
     `^#/${route}-login/(denied|forbidden|expired|unavailable|busy)$`,
   ).exec(hash);
   if (member)
-    return { app, page: "memberFailure", failure: member[1] as MemberLoginFailure };
+    return {
+      app,
+      page: "memberFailure",
+      failure: member[1] as MemberLoginFailure,
+    };
   const request = new RegExp(`^#/${route}/(${hex})$`).exec(hash);
   if (request) return { app, page: "wheel", capability: request[1] };
   const view = new RegExp(`^#/${route}/(${words})$`).exec(hash);
@@ -59,15 +59,24 @@ export function parseChannelRoute(hash: string): ChannelRoute | null {
     ? { app, page: "wheel", capability: admin[1], requestCapability: admin[2] }
     : null;
 }
-export function channelLink(app: ChannelApp, requestCapability: string): string {
+export function channelLink(
+  app: ChannelApp,
+  requestCapability: string,
+): string {
   return `${location.origin}${location.pathname}#/${channelApps[app].route}/${requestCapability}`;
 }
 /** Without the scheme: short enough to type on another screen. */
-export function channelViewLink(app: ChannelApp, viewerCapability: string): string {
+export function channelViewLink(
+  app: ChannelApp,
+  viewerCapability: string,
+): string {
   return `${location.host}${location.pathname}#/${channelApps[app].route}/${viewerCapability}`;
 }
 /** The word link as a route, to open it here for just watching. */
-export function channelViewRoute(app: ChannelApp, viewerCapability: string): string {
+export function channelViewRoute(
+  app: ChannelApp,
+  viewerCapability: string,
+): string {
   return `#/${channelApps[app].route}/${viewerCapability}`;
 }
 export function channelBindUrl(
@@ -78,7 +87,8 @@ export function channelBindUrl(
   return `${apiUrl}/auth/slack/${app === "beer" ? "beer-channel" : "channel"}/${channelId}`;
 }
 const messages: Record<string, string> = {
-  round_active: "Er loopt al een ronde. Kijk mee of doe mee onder de oproep in Slack.",
+  round_active:
+    "Er loopt al een ronde. Kijk mee of doe mee onder de oproep in Slack.",
   round_limit: "Vandaag zijn er al genoeg rondes gestart. Morgen weer!",
   slack_post_failed:
     "Het rad kon niet in het kanaal posten. Nodig de bot eerst uit in het kanaal.",
@@ -95,12 +105,17 @@ const messages: Record<string, string> = {
   invalid: "Geef alle halers sterren; een review mag hooguit 280 tekens zijn.",
 };
 export class ChannelApiError extends Error {
-  constructor(public code: string) {
+  constructor(
+    public code: string,
+    public status?: number,
+  ) {
     super(
-      messages[code] ??
+      (status && status >= 500 ? undefined : messages[code]) ??
         "Het rad is nu niet bereikbaar. Probeer het zo opnieuw.",
-
     );
+  }
+  get terminal() {
+    return this.status === 404;
   }
 }
 export async function channelRequest(
@@ -132,6 +147,7 @@ export async function channelRequest(
       data && typeof data === "object" && "code" in data
         ? String(data.code)
         : "network",
+      response.status,
     );
   return data as ChannelCommandResult;
 }

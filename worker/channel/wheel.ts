@@ -47,9 +47,11 @@ import { postMessage, REMINDER_LEAD_MS } from "../slack/state";
 import { beerCallBody, boundBody, callBody } from "./messages";
 import { slashHelp, validChannelName } from "./slash";
 import { cleanIntro, MIN_BEER_LEAD_MS } from "./beer";
+import { LoginAttemptStore } from "../slack/login-attempt";
+import type { PendingLogin } from "../slack/login";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-/** A round (and so its result) can be watched until this long after its start. */
+/** Minimum visibility; longer reviews extend this within the existing session TTL. */
 export const ROUND_WATCH_MS = 30 * 60 * 1000;
 /** A round blocks the next until its draw is over, or at most this long after its start. */
 export const ROUND_BLOCK_MS = 3 * 60 * 1000;
@@ -200,6 +202,15 @@ function roundError(
 }
 
 export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
+  async createLogin(pending: PendingLogin, secret: string): Promise<void> {
+    await new LoginAttemptStore(this.ctx.storage).create(pending, secret);
+  }
+  async consumeLogin(
+    secret: string,
+    state: string,
+  ): Promise<PendingLogin | null> {
+    return new LoginAttemptStore(this.ctx.storage).consume(secret, state);
+  }
   private read(): Binding | undefined {
     if (
       !this.ctx.storage.sql
@@ -303,7 +314,8 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
     this.save(binding);
     await this.arm(binding);
     await this.addViewer(binding, viewer);
-    if (stored?.viewerCapability) await this.dropViewer(stored.viewerCapability);
+    if (stored?.viewerCapability)
+      await this.dropViewer(stored.viewerCapability);
   }
   /** Pointer objects only: remember which channel a word link belongs to. */
   async point(channel: string): Promise<void> {
@@ -324,7 +336,9 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
       .exec("SELECT name FROM sqlite_master WHERE name = 'pointer'")
       .toArray().length
       ? this.ctx.storage.sql
-          .exec<{ channel: string }>("SELECT channel FROM pointer WHERE singleton = 1")
+          .exec<{ channel: string }>(
+            "SELECT channel FROM pointer WHERE singleton = 1",
+          )
           .toArray()[0]
       : undefined;
     if (!row) return json({ code: "unavailable" }, 404);
@@ -353,7 +367,12 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
         throw new RequestError(404, "unavailable");
       const settled = await this.settledRoundId();
       const current = this.read();
-      if (!current) throw new RequestError(404, "unavailable");
+      if (
+        !current?.viewerHash ||
+        Date.now() >= current.expiresAt ||
+        !equalHash(hash, current.viewerHash)
+      )
+        throw new RequestError(404, "unavailable");
       const { round, channelName, variant, app } = this.status(
         current,
         "requester",
@@ -382,7 +401,24 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
       const session = this.env.SESSIONS.getByName(
         await wordLocator(round.spectatorCapability),
       );
-      return (await session.channelRoundSettled()) ? round.id : undefined;
+      const [settled, watchUntil] = await Promise.all([
+        session.channelRoundSettled(),
+        session.channelRoundWatchUntil(),
+      ]);
+      const current = this.read();
+      if (
+        current?.round?.id === round.id &&
+        watchUntil &&
+        watchUntil > current.round.endsAt
+      ) {
+        current.round.endsAt = Math.min(
+          watchUntil,
+          round.startAt + SCHEDULE_RETENTION_MS,
+        );
+        this.save(current);
+        await this.arm(current);
+      }
+      return settled ? round.id : undefined;
     } catch {
       return;
     }
@@ -449,6 +485,17 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
       await this.expire();
       throw new RequestError(404, "unavailable");
     }
+    return this.authorizeHash(hash);
+  }
+  /** Synchronous recheck after external I/O, before using a previously granted role. */
+  private authorizeHash(hash: string): {
+    role: ChannelStatus["role"];
+    member?: Member;
+  } {
+    const binding = this.read();
+    const now = Date.now();
+    if (!binding || now >= binding.expiresAt)
+      throw new RequestError(404, "unavailable");
     if (equalHash(hash, binding.adminHash)) return { role: "admin" };
     if (equalHash(hash, binding.requestHash)) return { role: "requester" };
     const member = binding.members?.find(
@@ -473,7 +520,10 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
     for (const session of this.ballotSessions(binding, Date.now())) {
       try {
         const round = await session.memberRound(member.pseudonym);
-        if (result.participating === undefined && round.participating !== undefined)
+        if (
+          result.participating === undefined &&
+          round.participating !== undefined
+        )
           result.participating = round.participating;
         if (!result.ballot && round.ballot) result.ballot = round.ballot;
       } catch {
@@ -487,7 +537,11 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
    * person already holds the channel link. Bounded per channel per minute.
    * Resolves the binding's app, whose login is used, or null.
    */
-  async memberLoginAllowed(secret: string): Promise<ChannelApp | null> {
+  async memberLoginAllowed(secret: string): Promise<{
+    app: ChannelApp;
+    access: NonNullable<PendingLogin["memberAccess"]>;
+  } | null> {
+    const sourceHash = await hashSecret(secret);
     try {
       await this.authenticate(secret);
     } catch {
@@ -503,7 +557,10 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
     if ((binding.logins ?? 0) >= MAX_LOGINS_PER_MINUTE) return null;
     binding.logins = (binding.logins ?? 0) + 1;
     this.save(binding);
-    return binding.app ?? "coffee";
+    return {
+      app: binding.app ?? "coffee",
+      access: { version: binding.requestHash, sourceHash },
+    };
   }
   /**
    * After Sign in with Slack: a new personal link for a full member of the
@@ -512,7 +569,8 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
   async addMember(
     userId: string,
     teamId: string,
-    app: ChannelApp = "coffee",
+    app: ChannelApp,
+    access: NonNullable<PendingLogin["memberAccess"]>,
   ): Promise<string> {
     const secret = randomHex();
     const hash = await hashSecret(secret);
@@ -522,16 +580,23 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
       !binding ||
       Date.now() >= binding.expiresAt ||
       binding.teamId !== teamId ||
-      (binding.app ?? "coffee") !== app
+      (binding.app ?? "coffee") !== app ||
+      !this.loginAccessValid(binding, access)
     )
       throw new RequestError(404, "unavailable");
     if (!binding.memberKey) {
       binding.memberKey = randomHex();
       this.save(binding);
     }
-    const name = await pseudonym(binding.memberKey, userId);
+    const memberKey = binding.memberKey;
+    const name = await pseudonym(memberKey, userId);
     binding = this.read();
-    if (!binding?.memberKey || Date.now() >= binding.expiresAt)
+    if (
+      !binding ||
+      binding.memberKey !== memberKey ||
+      Date.now() >= binding.expiresAt ||
+      !this.loginAccessValid(binding, access)
+    )
       throw new RequestError(404, "unavailable");
     const now = Date.now();
     const members = (binding.members ?? []).filter(
@@ -546,23 +611,40 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
     await this.arm(binding);
     return `${binding.locator}.${secret}`;
   }
+  private loginAccessValid(
+    binding: Binding,
+    access: PendingLogin["memberAccess"],
+  ): boolean {
+    if (!access || !equalHash(binding.requestHash, access.version))
+      return false;
+    return (
+      equalHash(access.sourceHash, binding.adminHash) ||
+      equalHash(access.sourceHash, binding.requestHash) ||
+      !!binding.members?.some(
+        (m) => Date.now() < m.expiresAt && equalHash(m.hash, access.sourceHash),
+      )
+    );
+  }
   /** Link holders: status, reviews and (admin only) management; never round requests. */
   async access(secret: string, command: unknown): Promise<Response> {
     try {
       // Generated before authorization so no await separates read and write below.
       const rotated = randomHex(),
         viewer = randomWords();
-      const [rotatedHash, viewerHash] = await Promise.all([
+      const [rotatedHash, viewerHash, secretHash] = await Promise.all([
         hashSecret(rotated),
         hashSecret(viewer),
+        hashSecret(secret),
       ]);
-      const { role, member } = await this.authenticate(secret);
+      await this.authenticate(secret);
       const settled = await this.settledRoundId();
+      const { role, member } = this.authorizeHash(secretHash);
       const reply = async () => {
         const binding = this.read();
         if (!binding) throw new RequestError(404, "unavailable");
         const status = this.status(binding, role, Date.now(), settled);
         if (member) status.member = await this.memberStatus(binding, member);
+        this.authorizeHash(secretHash);
         return json({ type: "status", status } satisfies ChannelCommandResult);
       };
       if (command === null) return await reply();
@@ -885,7 +967,9 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
                     reminder: {
                       readyAt: startAt - REMINDER_LEAD_MS,
                       view: viewLink ?? link,
-                      ...(reviewed && channelPage ? { login: channelPage } : {}),
+                      ...(reviewed && channelPage
+                        ? { login: channelPage }
+                        : {}),
                     },
                   }
                 : {}),
@@ -909,6 +993,9 @@ export class ChannelWheel extends DurableObject<Env & SlackSecrets> {
     };
   }
   async alarm() {
+    await new LoginAttemptStore(this.ctx.storage).expire();
+    // Also extends visibility when no browser is polling the channel.
+    await this.settledRoundId();
     const binding = this.read();
     if (!binding) return;
     const now = Date.now();

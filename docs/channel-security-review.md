@@ -105,9 +105,13 @@ Coverage: `worker/tests/cookie.test.ts` tests multiple reactors/emojis, emoji-on
 
 Requested by the owner; reviewed against every SECURITY.md section, which now has the section "Bierrad channel rounds".
 
-- **Separation:** the Bierrad binding is its own Durable Object (`bierrad-channel:` prefix), stores its app and uses only the Bierrad app's `SLACK_*` credentials; Koffierad bindings keep their names and behaviour. Each slash endpoint verifies only its own signing secret and accepts only its own commands (tested: the coffee secret on `/slack/bier-commands` gives 401, `/bierrad` on `/slack/commands` gives 400, Koffierad commands on the Bierrad endpoint are invalid). A personal login is accepted only by a binding of the same app; login cookies carry the app.
+- **Separation:** the Bierrad binding is its own Durable Object (`bierrad-channel:` prefix), stores its app and uses only the Bierrad app's `SLACK_*` credentials; Koffierad bindings keep their names and behaviour. Each slash endpoint verifies only its own signing secret and accepts only its own commands (tested: the coffee secret on `/slack/bier-commands` gives 401, `/bierrad` on `/slack/commands` gives 400, Koffierad commands on the Bierrad endpoint are invalid). A personal login is accepted only by a binding of the same app; server-side login attempts carry the app (the cookie became opaque on 2026-10-13).
 - **Input:** day, time and number are parsed strictly and validated twice (slash parser and channel object), in Europe/Amsterdam; passed, non-existent and far starts are refused. The own text is bounded, cleaned and rendered as literal rich text with only emoji and bold, never as mrkdwn; tests cover `<!channel>`, `<!here>`, `<@U…>`, URLs and bidi and control characters. It never reaches a browser DTO.
 - **Exposure:** the call, reminder and settled call add no new audience: all links were already posted in the channel. The reminder keeps those links in the temporary session only until it settles; it is claimed before I/O and posted at most once (twice after a definite rejection).
 - **Load:** reactions are read every 15, 5 or 1 minutes depending on how far away the start is, so a round planned days ahead does not poll every minute.
 - **Not verified against a real Slack workspace** at the time of writing; the Miniflare tests use a fake Slack API with synthetic IDs.
 
+
+### Aanscherping 2026-10-13
+
+De loginbeschrijving is aangescherpt: de cookie bevat uitsluitend een eenmalige willekeurige handle; doel, app, state, nonce, vervaltijd en oorspronkelijke kanaaltoegang staan serverzijdig. Rotatie en intrekking worden bij afronding opnieuw gecontroleerd. Uitslagen blijven zo nodig tot vijf minuten na de reviewdeadline zichtbaar, nooit voorbij de sessieduur van één uur. Zie [de actuele onderhoudsreview](maintenance-security-review.md) voor de controles en deployvolgorde.

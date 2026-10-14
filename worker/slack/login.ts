@@ -15,13 +15,15 @@ export class LoginError extends Error {
     super(reason);
   }
 }
-interface Pending {
+export interface PendingLogin {
   /** The app whose login this is, and whose channel binding it concerns. */
   variant: ChannelApp;
   /** Set when the login binds this channel. */
   channelId?: string;
   /** Set when the login gives a personal link for this channel's object. */
   memberLocator?: string;
+  /** Binding generation and originating capability, checked again after Slack I/O. */
+  memberAccess?: { version: string; sourceHash: string };
   state: string;
   nonce: string;
   expiresAt: number;
@@ -31,30 +33,18 @@ const user = /^[UW][A-Z0-9]{8,20}$/;
 
 export function parseLoginCookie(
   header: string | null,
-  now = Date.now(),
-): Pending | undefined {
+): { locator: string; secret: string } | undefined {
   const values = (header ?? "")
     .split(";")
     .map((part) => part.trim())
     .filter((part) => part.startsWith(`${LOGIN_COOKIE}=`));
   // Duplicates are ambiguous; fail closed.
   if (values.length !== 1) return;
-  const match =
-    /^((?:beer-)?)(?:channel-([CG][A-Z0-9]{8,20})|member-([a-f0-9]{32}))\.([a-f0-9]{64})\.([a-f0-9]{64})\.(\d{13})$/.exec(
-      values[0].slice(LOGIN_COOKIE.length + 1),
-    );
-  if (!match || Number(match[6]) <= now) return;
-  const channel = match[2],
-    member = match[3];
-  return {
-    // Koffierad purposes are unprefixed; the Bierrad app's carry `beer-`.
-    variant: match[1] ? "beer" : "coffee",
-    ...(channel ? { channelId: channel } : {}),
-    ...(member ? { memberLocator: member } : {}),
-    state: match[4],
-    nonce: match[5],
-    expiresAt: Number(match[6]),
-  };
+  const match = /^([a-f0-9]{32})\.([a-f0-9]{64})$/.exec(
+    values[0].slice(LOGIN_COOKIE.length + 1),
+  );
+  if (!match) return;
+  return { locator: match[1], secret: match[2] };
 }
 export function loginCookie(value: string, maxAge: number): string {
   return `${LOGIN_COOKIE}=${value}; Path=/; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax`;
@@ -80,7 +70,13 @@ export function beginLogin(
   now = Date.now(),
   channelId?: string,
   memberLocator?: string,
-): { location: string; cookie: string } {
+): {
+  location: string;
+  cookie: string;
+  pending: PendingLogin;
+  locator: string;
+  secret: string;
+} {
   if (!loginConfigured(env)) throw new LoginError("unavailable");
   if (variant !== "coffee" && variant !== "beer")
     throw new LoginError("expired");
@@ -95,6 +91,8 @@ export function beginLogin(
   if (!channelId && !memberLocator) throw new LoginError("expired");
   const state = randomHex(),
     nonce = randomHex();
+  const locator = randomHex(16),
+    secret = randomHex();
   const location = new URL("https://slack.com/openid/connect/authorize");
   for (const [key, value] of Object.entries({
     response_type: "code",
@@ -107,11 +105,17 @@ export function beginLogin(
     location.searchParams.set(key, value);
   return {
     location: location.href,
-    cookie: loginCookie(
-      `${variant === "beer" ? "beer-" : ""}${channelId ? `channel-${channelId}` : `member-${memberLocator}`}.${state}.${nonce}.${now + LOGIN_TTL_MS}`,
-
-      LOGIN_TTL_MS / 1000,
-    ),
+    cookie: loginCookie(`${locator}.${secret}`, LOGIN_TTL_MS / 1000),
+    locator,
+    secret,
+    pending: {
+      variant,
+      channelId,
+      memberLocator,
+      state,
+      nonce,
+      expiresAt: now + LOGIN_TTL_MS,
+    },
   };
 }
 function claims(idToken: unknown): Record<string, unknown> {
@@ -138,7 +142,7 @@ function claims(idToken: unknown): Record<string, unknown> {
  */
 export async function completeLogin(
   env: SlackSecrets,
-  pending: Pending,
+  pending: PendingLogin,
   params: URLSearchParams,
   redirectUri: string,
   fetcher?: typeof fetch,
@@ -146,6 +150,7 @@ export async function completeLogin(
 ): Promise<{ teamId: string; botUserId?: string; userId: string }> {
   const state = params.get("state");
   if (
+    now >= pending.expiresAt ||
     params.getAll("state").length !== 1 ||
     !state ||
     !/^[a-f0-9]{64}$/.test(state) ||

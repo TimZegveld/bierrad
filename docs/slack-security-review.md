@@ -161,3 +161,7 @@ Requested by the owner; reviewed against every SECURITY.md section, which now re
 
 Tests: the Worker refuses `/api/join`, every removed host command and a schedule with a spectator link (400); `/auth/slack/beer` never redirects to Slack; login cookies without a channel or member purpose are refused; `slackAllowed` refuses the old login grant.
 
+
+### Aanscherping 2026-10-13
+
+De loginbeschrijving is aangescherpt: de cookie bevat uitsluitend een eenmalige willekeurige handle; doel, app, state, nonce, vervaltijd en oorspronkelijke kanaaltoegang staan serverzijdig. Rotatie en intrekking worden bij afronding opnieuw gecontroleerd. Uitslagen blijven zo nodig tot vijf minuten na de reviewdeadline zichtbaar, nooit voorbij de sessieduur van één uur. Zie [de actuele onderhoudsreview](maintenance-security-review.md) voor de controles en deployvolgorde.

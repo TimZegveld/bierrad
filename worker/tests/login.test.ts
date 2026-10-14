@@ -128,7 +128,7 @@ test("login start sends only public OIDC parameters and a host-only short-lived 
   assert.ok(!start.location.includes(env.SLACK_CLIENT_SECRET));
   assert.ok(!start.location.includes(env.SLACK_BOT_TOKEN));
   for (const attribute of [
-    `${LOGIN_COOKIE}=channel-C00000001.`,
+    `${LOGIN_COOKIE}=${start.locator}.`,
     "Path=/",
     "Max-Age=600",
     "HttpOnly",
@@ -137,39 +137,24 @@ test("login start sends only public OIDC parameters and a host-only short-lived 
   ])
     assert.ok(start.cookie.includes(attribute));
   assert.ok(!start.cookie.includes("Domain"));
-  const pending = parseLoginCookie(start.cookie.split(";")[0]);
-  assert.equal(pending?.variant, "coffee");
-  assert.equal(pending?.channelId, "C00000001");
-  // Plain and session-join logins of the removed Slack start are refused.
-  for (const other of ["beer", "coffee", `join-beer-${"a".repeat(32)}`])
-    assert.equal(
-      parseLoginCookie(
-        start.cookie.split(";")[0].replace("=channel-C00000001.", `=${other}.`),
-      ),
-      undefined,
-    );
-  assert.equal(pending?.state, url.searchParams.get("state"));
-  assert.equal(pending?.nonce, url.searchParams.get("nonce"));
+  const handle = parseLoginCookie(start.cookie.split(';')[0])!;
+  assert.equal(handle.locator, start.locator);
+  assert.equal(handle.secret, start.secret);
+  assert.equal(start.pending.variant, 'coffee');
+  assert.equal(start.pending.channelId, 'C00000001');
+  assert.equal(start.pending.state, url.searchParams.get('state'));
+  assert.equal(start.pending.nonce, url.searchParams.get('nonce'));
+  assert.ok(!start.cookie.includes(start.pending.state));
+  assert.ok(!start.cookie.includes('C00000001'));
 });
 
-test("login cookie parsing fails closed on expiry, duplicates and malformed values", () => {
-  const value = `channel-C00000001.${randomHex()}.${randomHex()}.${Date.now() + 60000}`;
-  assert.ok(parseLoginCookie(`other=1; ${LOGIN_COOKIE}=${value}`));
+test('login cookies reject legacy purposes, duplicates and malformed handles', () => {
+  const value = randomHex(16) + '.' + randomHex();
+  assert.ok(parseLoginCookie('other=1; ' + LOGIN_COOKIE + '=' + value));
   assert.equal(parseLoginCookie(null), undefined);
-  assert.equal(
-    parseLoginCookie(`${LOGIN_COOKIE}=${value}; ${LOGIN_COOKIE}=${value}`),
-    undefined,
-  );
-  assert.equal(
-    parseLoginCookie(
-      `${LOGIN_COOKIE}=${value.replace(/\d{13}$/, String(Date.now() - 1))}`,
-    ),
-    undefined,
-  );
-  assert.equal(
-    parseLoginCookie(`${LOGIN_COOKIE}=${value.replace("channel-C00000001", "tea")}`),
-    undefined,
-  );
+  assert.equal(parseLoginCookie(LOGIN_COOKIE + '=' + value + '; ' + LOGIN_COOKIE + '=' + value), undefined);
+  for (const value of ['tea', 'channel-C00000001.' + randomHex() + '.' + randomHex() + '.' + (Date.now()+60000), 'g'.repeat(32)+'.'+randomHex()])
+    assert.equal(parseLoginCookie(LOGIN_COOKIE + '=' + value), undefined);
 });
 
 test("full members log in; the user token is revoked and the client secret stays out of URLs", async () => {

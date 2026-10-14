@@ -1,9 +1,5 @@
-import { isChannelVariant, type ChannelVariant } from "../shared/channel";
-import {
-  beerReminderBody,
-  reviewBody,
-  settledCallBody,
-} from "./channel/messages";
+import { SessionSlackJobs } from "./slack/jobs";
+import { type ChannelVariant } from "../shared/channel";
 import { cleanIntro } from "./channel/beer";
 import { validWinnerCount } from "../shared/channel";
 import { roundTitle, type WheelVariant } from "../shared/variant";
@@ -12,13 +8,7 @@ import {
   SlackReactionParticipantSource,
   type SlackSource,
 } from "./slack/source";
-import {
-  reconcile,
-  postMessage,
-  postResult,
-  updateMessage,
-  MAX_CARD_ATTEMPTS,
-} from "./slack/state";
+import { reconcile } from "./slack/state";
 import {
   CHANNEL_GRANT,
   slackAllowed,
@@ -38,8 +28,6 @@ import {
   closeReview,
   openReview,
   reviewBallot,
-  settleReviewJob,
-  settleReviewPost,
   submitReview,
 } from "./reviews";
 import type { ReviewBallot } from "../shared/reviews";
@@ -180,6 +168,12 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
       record.session.state === "finished" ||
       (record.scheduledDraw?.status === "skipped" && !record.session.activeDraw)
     );
+  }
+  /** Keep the result visible for five minutes after voting closes, within the session TTL. */
+  async channelRoundWatchUntil(): Promise<number | null> {
+    const record = this.read();
+    if (!record || Date.now() >= record.expiresAt || !record.review?.closesAt) return null;
+    return Math.min(record.expiresAt, record.review.closesAt + 5 * 60000);
   }
   private async expire() {
     for (const ws of this.ctx.getWebSockets()) {
@@ -401,93 +395,16 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
       this.save(record);
       this.broadcast(record);
     }
-    await this.processChannelReminder();
+    const jobs = new SessionSlackJobs(this.env, this.ctx, () => this.read(), r => this.save(r), r => this.broadcast(r));
+    await jobs.processChannelReminder();
     await this.processChannelRefresh();
     await this.processScheduledDraw();
-    await this.processSlackResult();
-    await this.processReview();
-    await this.processCallCard();
+    await jobs.processSlackResult();
+    await jobs.processReview();
+    await jobs.processCallCard();
     const latest = this.read();
     if (latest && Date.now() < latest.expiresAt)
       await this.ctx.storage.setAlarm(nextDeadline(latest));
-  }
-  /**
-   * The thread reminder of a Bierrad round: claimed before I/O, never repeated
-   * when delivery is uncertain, retried once after a definite rejection and
-   * only before the start. Its links go as soon as it settles.
-   */
-  private async processChannelReminder() {
-    const record = this.read();
-    const reminder = record?.slack?.reminder,
-      source = record?.slack?.source;
-    if (!record || Date.now() >= record.expiresAt || !reminder || !source)
-      return;
-    const settle = (
-      target: StoredSession,
-      status: "posted" | "failed" | "uncertain" | "skipped",
-    ) => {
-      const r = target.slack!.reminder!;
-      r.status = status;
-      delete r.login;
-      delete r.view;
-      this.save(target);
-    };
-    if (reminder.status === "posting") {
-      if (Date.now() >= reminder.attemptedAt! + 120000)
-        settle(record, "uncertain");
-      return;
-    }
-    if (reminder.status !== "pending" || reminder.readyAt > Date.now()) return;
-    const plan = record.scheduledDraw;
-    if (
-      !reminder.view ||
-      plan?.status !== "pending" ||
-      Date.now() >= Date.parse(plan.startAt) - 30000 ||
-      !slackAllowed(
-        record.slack!.grantHash,
-        slackEnvironment(this.env, record.variant),
-      )
-    ) {
-      settle(record, "skipped");
-      return;
-    }
-    const body = beerReminderBody(source.channelId, source.parentMessageTs, {
-      view: reminder.view,
-      ...(reminder.login ? { login: reminder.login } : {}),
-    });
-    reminder.status = "posting";
-    reminder.attempts++;
-    const attemptedAt = (reminder.attemptedAt = Date.now());
-    this.save(record);
-    await this.ctx.storage.setAlarm(nextDeadline(record));
-    await this.ctx.storage.sync();
-    const result = await postMessage(
-      new SlackApiClient(
-        slackEnvironment(this.env, record.variant).SLACK_BOT_TOKEN!,
-      ),
-      source.channelId,
-      body,
-    );
-    const latest = this.read();
-    const current = latest?.slack?.reminder;
-    if (
-      !latest ||
-      Date.now() >= latest.expiresAt ||
-      current?.status !== "posting" ||
-      current.attemptedAt !== attemptedAt
-    )
-      return;
-    const start = Date.parse(latest.scheduledDraw?.startAt ?? "");
-    if (
-      result.status === "failed" &&
-      current.attempts < 2 &&
-      result.retryAt < start - 30000
-    ) {
-      current.status = "pending";
-      current.readyAt = result.retryAt;
-      this.save(latest);
-    } else settle(latest, result.status);
-    await this.ctx.storage.setAlarm(nextDeadline(latest));
   }
   private async processChannelRefresh() {
     const record = this.read();
@@ -711,199 +628,5 @@ export class LiveSession extends DurableObject<Env & SlackSecrets> {
       return false;
     }
   }
-  private async processSlackResult() {
-    const record = this.read();
-    const job = record?.slack?.job;
-    if (!record || Date.now() >= record.expiresAt || !job) return;
-    if (job.status === "posting") {
-      if (Date.now() >= job.attemptedAt! + 120000) {
-        job.status = "uncertain";
-        record.revision++;
-        this.save(record);
-        this.broadcast(record);
-      }
-      return;
-    }
-    if (job.status !== "pending" || job.readyAt > Date.now()) return;
-    if (
-      !slackAllowed(
-        record.slack!.grantHash,
-        slackEnvironment(this.env, record.variant),
-      )
-    ) {
-      job.status = "failed";
-      job.retryAt = Date.now() + 60000;
-      record.revision++;
-      this.save(record);
-      this.broadcast(record);
-      return;
-    }
-    // Claim synchronously before any await. Persist + arm crash recovery before external I/O.
-    job.status = "posting";
-    job.attemptedAt = Date.now();
-    record.revision++;
-    this.save(record);
-    this.broadcast(record);
-    await this.ctx.storage.setAlarm(nextDeadline(record));
-    await this.ctx.storage.sync();
-    const current = this.read();
-    if (
-      !current ||
-      Date.now() >= current.expiresAt ||
-      !slackAllowed(
-        current.slack?.grantHash,
-        slackEnvironment(this.env, current.variant),
-      )
-    )
-      return;
-    const result = await postResult(
-      new SlackApiClient(
-        slackEnvironment(this.env, record.variant).SLACK_BOT_TOKEN!,
-      ),
-      job,
-    );
-    const latest = this.read();
-    if (
-      !latest ||
-      Date.now() >= latest.expiresAt ||
-      latest.slack?.job?.drawId !== job.drawId ||
-      latest.slack.job.status !== "posting"
-    )
-      return;
-    Object.assign(latest.slack.job, result);
-    latest.revision++;
-    this.save(latest);
-    this.broadcast(latest);
-  }
-  /**
-   * Rewrites a settled channel round's call. Same claim-before-I/O discipline
-   * as posts, but an update is idempotent, so an uncertain one may be repeated
-   * (at most MAX_CARD_ATTEMPTS times in total).
-   */
-  private async processCallCard() {
-    const record = this.read();
-    const card = record?.slack?.card,
-      source = record?.slack?.source;
-    if (!record || Date.now() >= record.expiresAt || !card || !source) return;
-    if (card.status === "updating") {
-      if (Date.now() < card.attemptedAt! + 120000) return;
-      card.status = "pending";
-    }
-    if (card.status !== "pending" || card.readyAt > Date.now()) return;
-    const variant = record.variant;
-    if (
-      card.attempts >= MAX_CARD_ATTEMPTS ||
-      !isChannelVariant(variant) ||
-      !slackAllowed(
-        record.slack!.grantHash,
-        slackEnvironment(this.env, variant),
-      )
-    ) {
-      card.status = "failed";
-      this.save(record);
-      return;
-    }
-    card.status = "updating";
-    card.attempts++;
-    const attemptedAt = (card.attemptedAt = Date.now());
-    this.save(record);
-    await this.ctx.storage.setAlarm(nextDeadline(record));
-    await this.ctx.storage.sync();
-    const result = await updateMessage(
-      new SlackApiClient(slackEnvironment(this.env, variant).SLACK_BOT_TOKEN!),
-      settledCallBody(
-        source.channelId,
-        source.parentMessageTs,
-        card.startAt,
-        variant,
-        card,
-        record.review?.status === "open" ? record.review.link : undefined,
-        record.title,
-        record.intro,
-      ),
-    );
-    const latest = this.read();
-    const current = latest?.slack?.card;
-    if (
-      !latest ||
-      Date.now() >= latest.expiresAt ||
-      current?.status !== "updating" ||
-      current.attemptedAt !== attemptedAt
-    )
-      return;
-    if (result.status === "updated") current.status = "updated";
-    else if (current.attempts >= MAX_CARD_ATTEMPTS) current.status = "failed";
-    else {
-      current.status = "pending";
-      current.readyAt = result.retryAt;
-    }
-    this.save(latest);
-    await this.ctx.storage.setAlarm(nextDeadline(latest));
-  }
-  /**
-   * Closes voting at its deadline, then posts the anonymous results in the
-   * thread, one reply per winner. Each reply is claimed before I/O, never
-   * repeated when delivery is uncertain, retried at most once after a definite
-   * rejection.
-   */
-  private async processReview() {
-    const record = this.read();
-    const review = record?.review,
-      source = record?.slack?.source;
-    if (!record || Date.now() >= record.expiresAt || !review || !source) return;
-    if (review.status === "open" && Date.now() >= review.closesAt!) {
-      closeReview(record, Date.now());
-      record.revision++;
-      this.save(record);
-      this.broadcast(record);
-    }
-    const job = review.job;
-    if (!job) return;
-    if (job.status === "posting") {
-      if (Date.now() >= job.attemptedAt! + 120000) {
-        settleReviewPost(job, "uncertain", Date.now());
-        this.save(record);
-        await this.ctx.storage.setAlarm(nextDeadline(record));
-      }
-      return;
-    }
-    if (job.status !== "pending" || job.readyAt > Date.now()) return;
-    const variant = record.variant ?? "coffee";
-    if (
-      !slackAllowed(
-        record.slack!.grantHash,
-        slackEnvironment(this.env, variant),
-      )
-    ) {
-      settleReviewJob(job, "failed");
-      this.save(record);
-      return;
-    }
-    job.status = "posting";
-    job.attempts++;
-    const attemptedAt = (job.attemptedAt = Date.now());
-    this.save(record);
-    await this.ctx.storage.setAlarm(nextDeadline(record));
-    await this.ctx.storage.sync();
-    const result = await postMessage(
-      new SlackApiClient(slackEnvironment(this.env, variant).SLACK_BOT_TOKEN!),
-      source.channelId,
-      reviewBody(source.channelId, source.parentMessageTs, job.results[0]),
-    );
-    const latest = this.read();
-    const current = latest?.review?.job;
-    if (
-      !latest ||
-      Date.now() >= latest.expiresAt ||
-      current?.status !== "posting" ||
-      current.attemptedAt !== attemptedAt
-    )
-      return;
-    if (result.status === "failed" && current.attempts < 2) {
-      current.status = "pending";
-      current.readyAt = result.retryAt;
-    } else settleReviewPost(current, result.status, Date.now());
-    this.save(latest);
-    await this.ctx.storage.setAlarm(nextDeadline(latest));
-  }
+
 }

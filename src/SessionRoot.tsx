@@ -6,7 +6,7 @@ import {
   themeFor,
   type WheelVariant,
 } from "../shared/variant";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import App from "./App";
 import { LocalSessionController } from "./sessions/LocalSessionController";
 import {
@@ -70,7 +70,7 @@ function SessionPage({ hash }: { hash: string }) {
   const local = localVariant(hash);
   const variant: WheelVariant = local ?? "beer";
   const apiUrl = configuredApiUrl();
-  const route = parseLiveRoute(hash);
+  const route = useMemo(() => parseLiveRoute(hash), [hash]);
   const [controller, setController] = useState<
     LocalSessionController | RemoteSessionController
   >();
@@ -91,7 +91,7 @@ function SessionPage({ hash }: { hash: string }) {
     setController(current);
     void current.initialize();
     return () => current.dispose();
-  }, [hash, apiUrl]);
+  }, [local, route, variant, apiUrl]);
   if (!local && (!route || !apiUrl))
     return (
       <div className="unavailable">

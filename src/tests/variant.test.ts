@@ -6,11 +6,10 @@ import App from "../App";
 import { RoundTitleContext, VariantContext } from "../Theme";
 import { ManualParticipantSource } from "../services/ManualParticipantSource";
 import { LocalWinnerCountPreference } from "../services/WinnerCountPreference";
-import { loadWeights, saveWeights } from "../services/RigPreference";
 import { LocalSessionController } from "../sessions/LocalSessionController";
 import { FinalResult } from "../components/FinalResult";
 
-test("coffee roster, count and optional weights never overwrite legacy beer storage", async (t) => {
+test("coffee roster and count never overwrite legacy beer storage", async (t) => {
   const data = new Map<string, string>();
   const original = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
   Object.defineProperty(globalThis, "localStorage", {
@@ -40,10 +39,6 @@ test("coffee roster, count and optional weights never overwrite legacy beer stor
   new LocalWinnerCountPreference("coffee").save(1);
   assert.equal(new LocalWinnerCountPreference().load(), 3);
   assert.equal(new LocalWinnerCountPreference("coffee").load(), 1);
-  saveWeights({ a: 2 });
-  saveWeights({ b: 4 }, "coffee");
-  assert.deepEqual(loadWeights(), { a: 2 });
-  assert.deepEqual(loadWeights("coffee"), { b: 4 });
   assert.ok(data.has("bierrad.participants.v1"));
 });
 test("coffee setup and finale consistently say coffee halen", async () => {

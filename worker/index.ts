@@ -1,14 +1,9 @@
 import { isStandaloneVariant, themes } from "../shared/variant";
 import type { WheelVariant } from "../shared/variant";
 import type { CreatedSession } from "../shared/protocol";
-import { slackEnvironment, type SlackSecrets } from "./slack/access";
-import {
-  beginLogin,
-  completeLogin,
-  loginCookie,
-  LoginError,
-  parseLoginCookie,
-} from "./slack/login";
+import { type SlackSecrets } from "./slack/access";
+import { slackAuth } from "./slack/routes";
+import { creationAllowed } from "./limits";
 import {
   randomHex,
   randomWords,
@@ -17,7 +12,7 @@ import {
   hashSecret,
   wordLocator,
 } from "./auth";
-import { frontend, json, readBody, readFormBody, redirect } from "./http";
+import { json, readBody } from "./http";
 import { RequestError } from "./session";
 import {
   channelApps,
@@ -60,167 +55,6 @@ async function createSession(
     expiresAt,
   };
 }
-async function creationAllowed(env: WorkerEnv, ip: string) {
-  return (
-    (await env.CREATION_LIMIT.limit({ key: ip })).success &&
-    (await env.CREATION_GLOBAL.limit({ key: "creation" })).success
-  );
-}
-/**
- * Sign in with Slack, only to bind a channel or for a personal channel link;
- * it never starts a session. `/auth/slack/channel/<C…>` binds with the
- * Koffierad app, `/auth/slack/beer-channel/<C…>` with the Bierrad app; a
- * personal login uses the app of the channel its link belongs to. Top-level
- * navigations carry no Origin header and the callback needs a query, so these
- * bypass the API gate below and only ever answer with redirects; capabilities
- * go into the URL fragment only.
- */
-async function slackAuth(
-  request: Request,
-  env: WorkerEnv,
-  url: URL,
-): Promise<Response> {
-  const frontendUrl = frontend(env);
-  if (!frontendUrl) return json({ code: "unavailable" }, 503);
-  const callback = `${url.origin}/auth/slack/callback`;
-  const pending = parseLoginCookie(request.headers.get("Cookie"));
-  // Binding a channel: the channel and the app travel in the login cookie.
-  const bindStart =
-    /^\/auth\/slack\/(channel|beer-channel)\/([CG][A-Z0-9]{8,20})$/.exec(
-      url.pathname,
-    );
-  const callbackPath = url.pathname === "/auth/slack/callback";
-  const binding = !!bindStart || (callbackPath && !!pending?.channelId);
-  // A personal channel link: started by a form POST from the channel page.
-  const memberStart = url.pathname === "/auth/slack/member";
-  let app: ChannelApp = bindStart
-    ? bindStart[1] === "beer-channel"
-      ? "beer"
-      : "coffee"
-    : (pending?.variant ?? "coffee");
-  const clear = loginCookie("", 0);
-  const fail = (reason: string) =>
-    redirect(
-      `${frontendUrl.href}#/${channelApps[app].route}-${binding ? "koppelen" : "login"}/${reason}`,
-      clear,
-    );
-  try {
-    if (request.method !== (memberStart ? "POST" : "GET"))
-      return json({ code: "invalid" }, 405);
-    const ip = request.headers.get("CF-Connecting-IP") ?? "local";
-    if (!(await env.REQUEST_LIMIT.limit({ key: ip })).success)
-      return fail("busy");
-    if (memberStart) {
-      // The channel link travels only in a small form body from an
-      // allowed origin, never in a URL; it proves the person already holds it.
-      if (
-        url.search ||
-        !env.ALLOWED_ORIGINS.split(",").includes(
-          request.headers.get("Origin") ?? "",
-        ) ||
-        !request.headers
-          .get("Content-Type")
-          ?.startsWith("application/x-www-form-urlencoded")
-      )
-        return fail("expired");
-      const form = new URLSearchParams(await readFormBody(request, 1024));
-      const capability = parseCapability(form.get("capability"));
-      if (
-        [...form.keys()].length !== 1 ||
-        form.getAll("capability").length !== 1 ||
-        !capability?.locator
-      )
-        return fail("expired");
-      const own = await env.CHANNELS.getByName(
-        capability.locator,
-      ).memberLoginAllowed(capability.secret);
-      if (!own) return fail("expired");
-      app = own;
-      const login = beginLogin(
-        slackEnvironment(env, app),
-        app,
-        callback,
-        Date.now(),
-        undefined,
-        capability.locator,
-      );
-      return redirect(login.location, login.cookie);
-    }
-    if (bindStart) {
-      if (url.search) return fail("expired");
-      const login = beginLogin(
-        slackEnvironment(env, app),
-        app,
-        callback,
-        Date.now(),
-        bindStart[2],
-      );
-      return redirect(login.location, login.cookie);
-    }
-    // `/auth/slack/beer` and other old starts no longer start anything.
-    if (!callbackPath || !pending) return fail("expired");
-    // Before any Slack call: failed bindings also spend the creation budget.
-    // Personal logins create nothing; their channel bounds them per minute.
-    if (!pending.memberLocator && !(await creationAllowed(env, ip)))
-      return fail("busy");
-    const workspace = await completeLogin(
-      slackEnvironment(env, app),
-      pending,
-      url.searchParams,
-      callback,
-    );
-    const route = channelApps[app].route;
-    if (pending.memberLocator) {
-      let personal: string;
-      try {
-        personal = await env.CHANNELS.getByName(
-          pending.memberLocator,
-        ).addMember(workspace.userId, workspace.teamId, app);
-      } catch {
-        return fail("expired");
-      }
-      return redirect(`${frontendUrl.href}#/${route}/${personal}`, clear);
-    }
-    if (!pending.channelId) return fail("expired");
-    const locator = await channelLocator(pending.channelId, app);
-    const admin = randomHex(),
-      requestSecret = randomHex();
-    const [adminHash, requestHash] = await Promise.all([
-      hashSecret(admin),
-      hashSecret(requestSecret),
-    ]);
-    const requestCapability = `${locator}.${requestSecret}`;
-    try {
-      await env.CHANNELS.getByName(locator).bind(
-        {
-          app,
-          locator,
-          channelId: pending.channelId,
-          teamId: workspace.teamId,
-          ...(workspace.botUserId ? { botUserId: workspace.botUserId } : {}),
-          adminHash,
-          requestHash,
-          requestCapability,
-        },
-        `${frontendUrl.href}#/${route}/${requestCapability}`,
-      );
-    } catch (error) {
-      // RPC errors keep only their message: a fixed code from RequestError.
-      return fail(
-        error instanceof Error && error.message === "not_in_channel"
-          ? "not_in_channel"
-          : "unavailable",
-      );
-    }
-    return redirect(
-      `${frontendUrl.href}#/${route}-beheer/${locator}.${admin}/${requestCapability}`,
-      clear,
-    );
-  } catch (error) {
-    return fail(error instanceof LoginError ? error.reason : "unavailable");
-  }
-}
-
 /** Ephemeral replies for a `/bierrad` that cannot start at the chosen time. */
 const refusals = {
   past: "Dat tijdstip is al geweest (of is binnen een minuut). Kies een latere tijd, of een dag erbij: bijvoorbeeld `/bierrad morgen 15.45`.",

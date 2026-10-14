@@ -62,6 +62,7 @@ Eén commando, zonder Slack-app of secrets: bouwt de Worker, draait hem in Minif
 ## Validatie
 
 ```sh
+npm run lint              # React-hooks en getypeerde promise-controles
 npm test                  # frontend/domein + echte workerd-integratietests
 npm run typecheck
 npm run typecheck:worker
@@ -70,7 +71,7 @@ npm run build:worker       # dry-run, publiceert niets
 npm run types:worker       # na wijzigingen aan bindings/configuratie
 ```
 
-Er is geen linter geconfigureerd. `test:frontend` en `test:worker` kunnen apart draaien. Backendtests gebruiken dezelfde Miniflare-versie als Wrangler, via de officiële configuratieadapter. De test-only expiry-subclass wordt uitsluitend aan de in-memory testbundle toegevoegd en zit niet in productie.
+ESLint controleert productiecode op React-hookgebruik, ontbrekende effectafhankelijkheden, ongebruikte variabelen en onbehandelde/verkeerd gebruikte promises; CI draait dezelfde controle. `test:frontend` en `test:worker` kunnen apart draaien. Backendtests gebruiken dezelfde Miniflare-versie als Wrangler, via de officiële configuratieadapter. De test-only expiry-subclass wordt uitsluitend aan de in-memory testbundle toegevoegd en zit niet in productie.
 
 ## Architectuur
 
@@ -105,6 +106,8 @@ GitHub Pages → React → RemoteSessionController
 - `shared/protocol.ts`: expliciete publieke DTO en netwerkberichten. Private servermodellen staan uitsluitend onder `worker/`.
 - `worker/index.ts`: exacte Origin-allowlist, begrensde verzoeken, creatielimieten, capability-routing. Geen publieke sessielijst.
 - `worker/live-session.ts`: geautoriseerde HTTP-acties en hibernerende WebSockets, SQLite-opslag, tijdgestuurde voortgang, verwijderen na afloop.
+- `worker/slack/jobs.ts`: duurzame claims en begrensde pogingen voor Slack-berichten; los van de trekking.
+- `src/hooks/useChannelPolling.ts`: gedeelde seriële kanaalverversing; tijdelijke fouten herstellen automatisch, alleen een 404 beëindigt toegang.
 - `worker/session.ts`: strikte commando-validatie, rechten, veilige DTO, aantallen, selectie, deadlines.
 - `WheelGrid`, `BeerWheel` en `useWheelAnimation`: uitsluitend deterministische weergave. De klokcontext levert alleen een tijdcorrectie en bevat geen netwerklogica.
 
@@ -185,7 +188,7 @@ Koppel het Bierrad aan een kanaal via `#/bier-koppelen` (met de eigen Bierrad-ap
 
 [Appmanifest en veilige instelling](docs/slack-setup.md) · [Security review](docs/slack-security-review.md)
 
-`worker/slack` bevat de getypeerde client, deelnemersbron, private mapping en resultaattekst; `worker/slack/login.ts` doet Sign in with Slack, alleen om een kanaal te koppelen of voor een persoonlijke kanaallink. De raderen/selectie zijn ongewijzigd en blijven zonder netwerk of Slack functioneren.
+`worker/slack` bevat de getypeerde client, deelnemersbron, private mapping en resultaattekst; `worker/slack/routes.ts`, `login.ts` en `login-attempt.ts` verzorgen Sign in with Slack, alleen om een kanaal te koppelen of voor een persoonlijke kanaallink. De raderen/selectie zijn ongewijzigd en blijven zonder netwerk of Slack functioneren.
 
 ## Koffierad ☕
 
@@ -195,7 +198,7 @@ De variant van een live-sessie staat vanaf creatie vast op de server; host en ki
 
 ### Live Koffierad per Slack-kanaal
 
-Iedere afdeling kan een eigen Koffierad aan een eigen Slack-kanaal koppelen via `#/koffie-koppelen` (inloggen met Slack, daarna plaatst de bot een bevestiging in het kanaal). De vaste kanaallink (`#/koffie/<link>`) is het rad van dat kanaal: hij toont steeds het live rad en de uitslag van de laatste ronde. Een minuut na de finale maakt het rad plaats voor een rustige uitslagpagina ("De koffieronde is gedraaid"; bij de Bierrad "De bierronde van vandaag is gedraaid") met de halers, de stemvoortgang en, zodra het stemmen voorbij is, per haler de sterren en **🎡 Bekijk het rad nog eens**, dat de trekking lokaal opnieuw afspeelt vanuit de bevroren draaiinstructie; tot een half uur na de start, daarna volgt weer de uitleg. Daarna kan **iedereen** een koffieronde aanvragen door in het kanaal `/koffierad` of `/koffierad 10` te typen; de kanaalpagina zelf heeft geen startknoppen. De aanvrager kiest binnen hoeveel minuten het rad draait (standaard 5); de start valt op de volgende hele minuut, zodat de getoonde tijd klopt, en kijkers zien een afteller. De bot plaatst een oproep in het kanaal en zet er zelf al een ☕-reactie onder, zodat meedoen één klik is; die botreactie telt nooit mee. Kijkers zien het rad vollopen. Na de wachttijd draait het rad op de server en kiest het precies één koffiehaler. De bot meldt die met @vermelding in de thread van de oproep en werkt de oproep zelf bij tot "🏆 @naam haalt koffie", zodat het kanaal één bericht per ronde houdt. Doet niemand mee, dan staat dat in de bijgewerkte oproep. Voor een extern scherm kopieert **🖥 Op ander scherm tonen** op de kanaalpagina een meekijklink in woorden (`#/koffie/aap-beer-…`, makkelijk over te typen): die toont steeds het rad en de uitslag van de laatste ronde, maar kan geen rondes starten of iets beheren. De beheerlink (`#/koffie-beheer/…`) kan de standaardwachttijd aanpassen, een nieuwe aanvraaglink maken (dat vervangt ook de meekijklink) en ontkoppelen. Zie [kanaal koppelen](docs/slack-setup.md#koffierad-aan-een-kanaal-koppelen) en de [securityreview](docs/channel-security-review.md).
+Iedere afdeling kan een eigen Koffierad aan een eigen Slack-kanaal koppelen via `#/koffie-koppelen` (inloggen met Slack, daarna plaatst de bot een bevestiging in het kanaal). De vaste kanaallink (`#/koffie/<link>`) is het rad van dat kanaal: hij toont steeds het live rad en de uitslag van de laatste ronde. Een minuut na de finale maakt het rad plaats voor een rustige uitslagpagina ("De koffieronde is gedraaid"; bij de Bierrad "De bierronde van vandaag is gedraaid") met de halers, de stemvoortgang en, zodra het stemmen voorbij is, per haler de sterren en **🎡 Bekijk het rad nog eens**, dat de trekking lokaal opnieuw afspeelt vanuit de bevroren draaiinstructie; tot minstens een half uur na de start. Bij langere reviews blijft de uitslag tot vijf minuten na de stemdeadline zichtbaar, uiterlijk tot de sessie een uur na de start vervalt; daarna volgt weer de uitleg. Daarna kan **iedereen** een koffieronde aanvragen door in het kanaal `/koffierad` of `/koffierad 10` te typen; de kanaalpagina zelf heeft geen startknoppen. De aanvrager kiest binnen hoeveel minuten het rad draait (standaard 5); de start valt op de volgende hele minuut, zodat de getoonde tijd klopt, en kijkers zien een afteller. De bot plaatst een oproep in het kanaal en zet er zelf al een ☕-reactie onder, zodat meedoen één klik is; die botreactie telt nooit mee. Kijkers zien het rad vollopen. Na de wachttijd draait het rad op de server en kiest het precies één koffiehaler. De bot meldt die met @vermelding in de thread van de oproep en werkt de oproep zelf bij tot "🏆 @naam haalt koffie", zodat het kanaal één bericht per ronde houdt. Doet niemand mee, dan staat dat in de bijgewerkte oproep. Voor een extern scherm kopieert **🖥 Op ander scherm tonen** op de kanaalpagina een meekijklink in woorden (`#/koffie/aap-beer-…`, makkelijk over te typen): die toont steeds het rad en de uitslag van de laatste ronde, maar kan geen rondes starten of iets beheren. De beheerlink (`#/koffie-beheer/…`) kan de standaardwachttijd aanpassen, een nieuwe aanvraaglink maken (dat vervangt ook de meekijklink) en ontkoppelen. Zie [kanaal koppelen](docs/slack-setup.md#koffierad-aan-een-kanaal-koppelen) en de [securityreview](docs/channel-security-review.md).
 
 **Reviews (koffie, water en koek).** Staan reviews aan (standaard aan, ook voor bestaande kanalen; uit te zetten op de beheerpagina), dan linkt de oproep naar de kanaalpagina met **Inloggen met Slack** of **Alleen kijken**. Inloggen geeft een persoonlijke link (30 dagen, als bladwijzer te bewaren) waarmee je meekijkt en na afloop de haler 1–5 sterren geeft, met optioneel een anonieme tekst. Alleen deelnemers van die ronde stemmen, één keer, nooit op zichzelf. Als iedereen gestemd heeft of de tijd om is (standaard 15 minuten), plaatst de bot de reviews anoniem in de thread, met een eigen bericht per haler (zo kun je per haler een emoji-reactie geven), en werkt hij de oproep bij met de sterren. De sterren staan daarna ook op de uitslagpagina van de ronde; de teksten alleen in Slack. Daarna worden de stemmen en teksten gewist; de sterren verdwijnen met de ronde, een uur na de start. Zie [reviews-review](docs/reviews-review.md).
 
@@ -218,3 +221,7 @@ Wint Alice, dan kiest de server tegelijk met de trekking één van haar loten. W
 De statische HTML bevat Open Graph- en Twitter Card-metadata met een vaste publieke afbeelding: `public/social-preview.png` (1730 × 909). Alle fragmentroutes, inclusief live- en koffielinks, gebruiken dezelfde Bierrad-preview. De afbeelding bevat geen deelnemers, uitslagen of toegangscodes en vereist geen backendverzoek. De bestaande privacy-meta en CSP blijven behouden.
 
 Bij een verhuizing naar een ander domein of subpad moeten de absolute `og:url`, `og:image` en `twitter:image`-adressen in `index.html` worden aangepast. Controleer na publicatie dat de PNG publiek bereikbaar is en deel de link opnieuw in de gewenste chatapp. Chatapps bepalen zelf uitsnede en weergave en kunnen eerdere previews cachen; bestaande berichten verversen niet noodzakelijk direct. Gebruik bij externe previewvalidators uitsluitend de publieke basis-URL, nooit een live- of hostlink.
+
+## Onderhoudsreview 2026-10-13
+
+Slack-logins gebruiken een eenmalige serverzijdige loginpoging van tien minuten. De cookie bevat alleen een willekeurige code; app, doel en oorspronkelijke toegangsrechten staan serverzijdig. Linkrotatie, opnieuw koppelen en uitloggen blokkeren ook de bijbehorende lopende persoonlijke logins. Bestaande kanaal- en persoonlijke links blijven geldig; een login die nog met de oude cookie bezig was moet opnieuw beginnen. Er zijn geen nieuwe secrets, scopes of Durable Object-migraties nodig. Publiceer de Worker vóór het frontend. Zie [de securityreview](docs/maintenance-security-review.md).

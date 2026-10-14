@@ -401,7 +401,7 @@ test(
       const authorize = new URL(begin.headers.get("location")!);
       // The Bierrad app's own login.
       assert.equal(authorize.searchParams.get("client_id"), clientId);
-      assert.match(begin.headers.get("set-cookie")!, /=beer-channel-C00000001\./);
+      assert.match(begin.headers.get("set-cookie")!, /=[a-f0-9]{32}\.[a-f0-9]{64};/);
       nonce = authorize.searchParams.get("nonce")!;
       const bound = await navigate(
         `/auth/slack/callback?code=synthetic-code&state=${authorize.searchParams.get("state")}`,

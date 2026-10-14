@@ -161,7 +161,7 @@ test(
       const begin = await memberStart(new URLSearchParams({ capability: requester }).toString());
       assert.equal(begin.status, 303);
       const cookie = begin.headers.get("set-cookie")!.split(";")[0];
-      assert.match(cookie, /member-[a-f0-9]{32}\./);
+      assert.match(cookie, /=[a-f0-9]{32}\.[a-f0-9]{64}$/);
       sub = user;
       const done = await callback(begin.headers.get("location")!, cookie);
       const personal = /#\/koffie\/([a-f0-9]{32}\.[a-f0-9]{64})$/.exec(done.headers.get("location")!);

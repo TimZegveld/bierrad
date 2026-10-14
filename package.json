@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "lint": "eslint src shared worker --max-warnings 0",
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
     "typecheck": "tsc --noEmit",
@@ -29,10 +30,13 @@
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^5.0.0",
-    "miniflare": "5.20261001.0-alpha",
+    "eslint": "10.12.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "miniflare": "5.20261006.1-alpha",
     "tsx": "^4.20.0",
     "typescript": "~5.9.2",
+    "typescript-eslint": "8.71.1",
     "vite": "^7.1.0",
-    "wrangler": "^4.147.0"
+    "wrangler": "4.149.0"
   }
 }

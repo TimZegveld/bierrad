@@ -292,25 +292,22 @@ test("review texts are cleaned and bounded; submissions are exact", () => {
   assert.ok(!validSubmission({ scores: [5], texts: [5] }, 1));
 });
 
-test("a personal login is bound to its channel object in the login cookie", () => {
+test("a personal login keeps its purpose server-side", () => {
   const env = { SLACK_BOT_TOKEN: "synthetic", SLACK_CLIENT_ID: "1.2", SLACK_CLIENT_SECRET: "synthetic" };
   const locator = "a".repeat(32);
   const login = beginLogin(env, "coffee", "https://api.example.test/auth/slack/callback", now, undefined, locator);
   const cookie = login.cookie.split(";")[0];
-  assert.ok(cookie.startsWith(`${LOGIN_COOKIE}=member-${locator}.`));
-  const pending = parseLoginCookie(cookie, now)!;
+  assert.ok(!cookie.includes(locator));
+  const pending = login.pending;
   assert.equal(pending.memberLocator, locator);
   assert.equal(pending.variant, "coffee");
   assert.equal(pending.channelId, undefined);
   // The Bierrad app's personal logins carry their own prefix.
-  const beer = parseLoginCookie(
-    beginLogin(env, "beer", "https://x/cb", now, undefined, locator).cookie.split(";")[0],
-    now,
-  )!;
+  const beer = beginLogin(env, "beer", "https://x/cb", now, undefined, locator).pending;
   assert.equal(beer.variant, "beer");
   assert.equal(beer.memberLocator, locator);
   assert.throws(() => beginLogin(env, "water" as "beer", "https://x/cb", now, undefined, locator));
   assert.throws(() => beginLogin(env, "coffee", "https://x/cb", now, undefined, "XYZ"));
-  assert.equal(parseLoginCookie(`${LOGIN_COOKIE}=member-${"g".repeat(32)}.${"a".repeat(64)}.${"b".repeat(64)}.${now + 1000}`, now), undefined);
+  assert.equal(parseLoginCookie(`${LOGIN_COOKIE}=member-${"g".repeat(32)}.${"a".repeat(64)}.${"b".repeat(64)}.${now + 1000}`), undefined);
 });
 

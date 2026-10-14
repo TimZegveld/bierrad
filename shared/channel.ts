@@ -98,6 +98,8 @@ export const DEFAULT_BEER_TIME = "15:45";
 /** Winners per Bierrad round: the channel default unless `/bierrad` names one. */
 export const DEFAULT_BEER_WINNERS = 2;
 export const MAX_BEER_WINNERS = 10;
+/** A Bierrad channel round with at least this many participants is a Bierfeest; display only. */
+export const BIERFEEST_THRESHOLD = 20;
 export function validWinnerCount(value: unknown): value is number {
   return (
     typeof value === "number" &&

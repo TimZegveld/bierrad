@@ -8,11 +8,14 @@ import { parseSlashCommand } from "../channel/slash";
 import {
   beerCallBody,
   beerReminderBody,
+  bierfeestBody,
   boundBody,
   introElements,
   settledCallBody,
 } from "../channel/messages";
-import { newSession, refreshInterval } from "../session";
+import { newSession, nextDeadline, publicSession, refreshInterval } from "../session";
+import { isBierfeest, queueBierfeestNotice } from "../slack/state";
+import { createSession } from "../../src/domain/drawEngine";
 import { amsterdamInput } from "../../src/utils/schedule";
 import type { ChannelCommandResult } from "../../shared/channel";
 
@@ -223,6 +226,74 @@ test("a round planned far ahead reads its reactions less often", () => {
   assert.equal(plan(10 * 60000), 60000);
 });
 
+function channelRound(variant: "beer" | "coffee", people: number) {
+  const r = newSession("h", "s", now, variant);
+  r.session = createSession(
+    r.session.id,
+    Array.from({ length: people }, (_, i) => ({ id: `p${i}`, name: `Collega ${i}` })),
+    2,
+  );
+  r.scheduledDraw = { startAt: new Date(now + 3600000).toISOString(), status: "pending" };
+  r.slack = { grantHash: "g", mapping: {}, channelRound: true };
+  return r;
+}
+
+test("a Bierrad channel round of 20 or more is a Bierfeest; nothing else ever is", () => {
+  assert.equal(isBierfeest(channelRound("beer", 19)), false);
+  assert.equal(isBierfeest(channelRound("beer", 20)), true);
+  assert.equal(isBierfeest(channelRound("beer", 21)), true);
+  assert.equal(isBierfeest(channelRound("coffee", 30)), false);
+  const plain = channelRound("beer", 30);
+  delete plain.slack;
+  assert.equal(isBierfeest(plain), false);
+  // Only the look: the DTO gains a flag, the winners stay as they are.
+  const dto = publicSession(channelRound("beer", 20));
+  assert.equal(dto.bierfeest, true);
+  assert.equal(dto.winnerCount, 2);
+  assert.equal("bierfeest" in publicSession(channelRound("beer", 19)), false);
+});
+
+test("the Bierfeest reply is queued once, dropped unsent when the round falls back", () => {
+  const r = channelRound("beer", 19);
+  queueBierfeestNotice(r, now);
+  assert.equal(r.slack!.bierfeest, undefined);
+  const twenty = channelRound("beer", 20).session;
+  r.session = twenty;
+  queueBierfeestNotice(r, now);
+  assert.deepEqual(r.slack!.bierfeest, { readyAt: now, status: "pending", attempts: 0 });
+  assert.equal(nextDeadline(r), now);
+  // Back to 19 before it went out: nothing was said, so nothing stays queued.
+  r.session = channelRound("beer", 19).session;
+  queueBierfeestNotice(r, now + 1);
+  assert.equal(r.slack!.bierfeest, undefined);
+  // Once claimed it never comes back, also not after falling back and growing again.
+  r.session = twenty;
+  queueBierfeestNotice(r, now + 2);
+  r.slack!.bierfeest!.status = "posted";
+  r.session = channelRound("beer", 19).session;
+  queueBierfeestNotice(r, now + 3);
+  r.session = twenty;
+  queueBierfeestNotice(r, now + 4);
+  assert.equal(r.slack!.bierfeest!.status, "posted");
+  assert.equal(r.slack!.bierfeest!.readyAt, now + 2);
+  // Not once the draw is being prepared.
+  const late = channelRound("beer", 25);
+  late.scheduledDraw!.status = "refreshing";
+  queueBierfeestNotice(late, now);
+  assert.equal(late.slack!.bierfeest, undefined);
+});
+
+test("the Bierfeest reply stays in the thread: fixed text, no link or mention", () => {
+  const body = bierfeestBody("C00000001", "1234567890.123456", 23);
+  const json = JSON.stringify(body);
+  assert.equal(body.thread_ts, "1234567890.123456");
+  assert.equal(body.reply_broadcast, false);
+  assert.equal(body.unfurl_links, false);
+  assert.equal(body.parse, "none");
+  assert.ok(json.includes("Al 23 aanmeldingen: deze bierronde wordt een Bierfeest!"));
+  assert.ok(!json.includes('"type":"link"') && !json.includes('"type":"user"'));
+});
+
 const signingSecret = "synthetic-bierrad-signing-secret";
 const coffeeSecret = "synthetic-coffee-signing-secret";
 const sign = (body: string, secret = signingSecret) => {
@@ -245,7 +316,9 @@ test(
     const posts: Record<string, unknown>[] = [];
     const updates: Record<string, unknown>[] = [];
     const reactionsAdded: Record<string, unknown>[] = [];
-    const reactors = ["UBOT00002", "U00000001", "U00000002", "U00000003", "U00000004"];
+    const few = ["UBOT00002", "U00000001", "U00000002", "U00000003", "U00000004"];
+    const many = ["UBOT00002", ...Array.from({ length: 21 }, (_, i) => `U${String(i + 1).padStart(8, "0")}`)];
+    let reactors = few;
     const mf = new Miniflare(
       convertV4MiniflareOptions({
         workers: [
@@ -257,6 +330,7 @@ test(
               `\nexport class TestSession extends LiveSession {
       edit(fn) { const r = JSON.parse(this.ctx.storage.sql.exec('SELECT value FROM session WHERE singleton = 1').one().value); fn(r); this.ctx.storage.sql.exec('UPDATE session SET value = ? WHERE singleton = 1', JSON.stringify(r)); }
       stored() { return this.ctx.storage.sql.exec('SELECT value FROM session WHERE singleton = 1').one().value; }
+      async refreshNow() { this.edit(r => { r.slack.nextImportAt = 0; delete r.slack.retryImportAt; }); return this.alarm(); }
       async remindNow() { this.edit(r => { r.slack.reminder.readyAt = Date.now() - 1; }); return this.alarm(); }
       async due() { this.edit(r => { r.scheduledDraw.startAt = new Date(Date.now() + 4000).toISOString(); }); return this.alarm(); }
       async postNow() { this.edit(r => { if (r.slack.job) r.slack.job.readyAt = 0; if (r.slack.card) r.slack.card.readyAt = Date.now() - 1; }); return this.alarm(); }
@@ -468,6 +542,7 @@ test(
       const session = sessions.get(sessions.idFromName(await wordLocator(started.spectatorCapability))) as unknown as {
         stored(): Promise<string>;
         remindNow(): Promise<void>;
+        refreshNow(): Promise<void>;
         due(): Promise<void>;
         land(): Promise<void>;
         postNow(): Promise<void>;
@@ -498,6 +573,35 @@ test(
       // Never twice.
       await session.remindNow();
       assert.equal(posts.length, 3);
+
+      // Twenty-one 🍻: a Bierfeest, said once in the thread and never broadcast.
+      const dto = async () =>
+        ((await (
+          await mf.dispatchFetch("http://localhost/api/session", {
+            headers: { Origin: "http://127.0.0.1:5173", Authorization: `Bearer ${started.spectatorCapability}` },
+          })
+        ).json()) as { session: { bierfeest?: true; winnerCount: number } }).session;
+      assert.equal((await dto()).bierfeest, undefined);
+      reactors = many;
+      await session.refreshNow();
+      assert.equal((await dto()).bierfeest, true);
+      assert.equal((await dto()).winnerCount, 3);
+      assert.equal(posts.length, 4);
+      const feest = posts.at(-1)!;
+      assert.equal(feest.thread_ts, reactionsAdded.at(-1)!.timestamp);
+      assert.equal(feest.reply_broadcast, false);
+      assert.match(String(feest.text), /Al 21 aanmeldingen: deze bierronde wordt een Bierfeest!/);
+      assert.equal(JSON.parse(await session.stored()).slack.bierfeest.status, "posted");
+      // Back to four: the party look goes, without a word; growing again says nothing new.
+      reactors = few;
+      await session.refreshNow();
+      assert.equal((await dto()).bierfeest, undefined);
+      reactors = many;
+      await session.refreshNow();
+      assert.equal((await dto()).bierfeest, true);
+      reactors = few;
+      await session.refreshNow();
+      assert.equal(posts.length, 4);
 
       // The draw: three unique winners from the 🍻 reactions, never the bot.
       await session.due();

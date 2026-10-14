@@ -371,6 +371,35 @@ export function beerReminderBody(
     reply_broadcast: false,
   };
 }
+/**
+ * The one thread reply when a waiting Bierrad round becomes a Bierfeest: fixed
+ * text and the server's own count, no link, name or mention, never broadcast.
+ */
+export function bierfeestBody(
+  channelId: string,
+  threadTs: string,
+  participants: number,
+) {
+  const elements: Element[] = [
+    {
+      type: "text",
+      text: `🎉 Al ${participants} aanmeldingen: deze bierronde wordt een Bierfeest! 🍻`,
+    },
+  ];
+  return {
+    channel: channelId,
+    thread_ts: threadTs,
+    text: fallback(elements),
+    blocks: [
+      {
+        type: "rich_text",
+        elements: [{ type: "rich_text_section", elements }],
+      },
+    ],
+    ...options,
+    reply_broadcast: false,
+  };
+}
 /** What a settled round shows in place of its call. */
 export type CallOutcome =
   | {

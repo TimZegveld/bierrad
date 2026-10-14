@@ -26,6 +26,8 @@ export interface PublicBeerWheelSession {
   expiresAt: string;
   revision: number;
   scheduledDraw?: ScheduledDraw;
+  /** Bierrad channel rounds with enough participants: the party look only, never the draw. */
+  bierfeest?: true;
   /** Counts only, while a channel round can be reviewed. */
   review?: ReviewProgress;
   /** Once a channel round's review has closed: stars per winner, never per voter, never texts. */

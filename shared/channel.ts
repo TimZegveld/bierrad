@@ -173,6 +173,11 @@ export const feestCopy = {
   icon: "🌈",
   round: "feestronde",
 } as const;
+/** A Bierrad round of BIERFEEST_THRESHOLD or more; display only. */
+export const bierfeestCopy = {
+  name: "Bierfeest",
+  icon: "🎉",
+} as const;
 export interface ChannelStatus {
   /** `member`: a personal link from Sign in with Slack; requests rounds and reviews. */
   role: "admin" | "requester" | "member";

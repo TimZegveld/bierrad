@@ -1,12 +1,23 @@
 import type { CSSProperties } from "react";
-import { feestTheme } from "../../shared/variant";
+import { bierfeestTheme, feestTheme } from "../../shared/variant";
 import { colors } from "./BeerWheel";
-/** A Feestrad finale: rainbow confetti in three waves, in all shapes and speeds. */
+/**
+ * A Feestrad finale: rainbow confetti in three waves, in all shapes and speeds;
+ * a Bierfeest's in gold and foam.
+ */
 const PARTY_PIECES = 150;
-export function Confetti({ party = false }: { party?: boolean }) {
-  const palette = party
-    ? [...feestTheme.wheelColors!, "#ffd43b", "#ffffff"]
-    : colors;
+export function Confetti({
+  party = false,
+  gold = false,
+}: {
+  party?: boolean;
+  gold?: boolean;
+}) {
+  const palette = !party
+    ? colors
+    : gold
+      ? [...bierfeestTheme.wheelColors!, "#c97a12", "#ffffff"]
+      : [...feestTheme.wheelColors!, "#ffd43b", "#ffffff"];
   return (
     <div className={`confetti${party ? " party" : ""}`} aria-hidden="true">
       {Array.from({ length: party ? PARTY_PIECES : 42 }, (_, i) => (

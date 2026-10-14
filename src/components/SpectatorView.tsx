@@ -164,8 +164,16 @@ export function SpectatorView({
           </>
         ) : null}
       </div>
-      {celebrate && <Confetti key={draw.id} party={theme.feest} />}
-      {celebrate && theme.feest && <Fireworks key={`fireworks-${draw.id}`} />}
+      {celebrate && (
+        <Confetti
+          key={draw.id}
+          party={theme.feest || theme.bierfeest}
+          gold={theme.bierfeest}
+        />
+      )}
+      {celebrate && (theme.feest || theme.bierfeest) && (
+        <Fireworks key={`fireworks-${draw.id}`} gold={theme.bierfeest} />
+      )}
     </div>
   );
 }
@@ -204,9 +212,12 @@ function SpectatorHeader({ status }: { status: LiveInfo["status"] }) {
       >
         ⛶
       </button>
-      {/* There is no local Feestrad: the link opens the round's own wheel. */}
+      {/* There is no local Feestrad or Bierfeest: the link opens the round's own wheel. */}
       <a href={localHash(theme.variant)}>
-        Eigen {theme.feest ? themes[theme.variant].name : theme.name}
+        Eigen{" "}
+        {theme.feest || theme.bierfeest
+          ? themes[theme.variant].name
+          : theme.name}
       </a>
     </div>
   );

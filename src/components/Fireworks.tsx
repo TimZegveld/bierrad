@@ -22,12 +22,14 @@ const BURSTS: readonly [number, number, number][] = [
   [74, 12, 4.9],
 ];
 const SPARKS = 18;
+/** A Bierfeest bursts in deep gold, amber and foam, so it shows on a light page. */
+const GOLD = ["#f59f00", "#e8590c", "#ffd43b", "#c97a12", "#ffe8a3", "#f08c00"];
 /**
- * A Feestrad finale: eighteen rainbow fireworks over the wheels. Display only, CSS
- * only, gone with reduced motion; it never touches the draw.
+ * A Feestrad finale: eighteen rainbow fireworks over the wheels; a Bierfeest's
+ * in gold. Display only, CSS only, gone with reduced motion; it never touches the draw.
  */
-export function Fireworks() {
-  const palette = feestTheme.wheelColors!;
+export function Fireworks({ gold = false }: { gold?: boolean }) {
+  const palette = gold ? GOLD : feestTheme.wheelColors!;
   return (
     <div className="fireworks" aria-hidden="true">
       {BURSTS.map(([left, top, delay], b) => (

@@ -351,3 +351,35 @@ test("a new live session takes over the host's local roster once via host comman
     controller.dispose();
   }
 });
+test("a Bierfeest from the server reaches the page as a flag, and goes again", async () => {
+  const serverNow = Date.now();
+  const dto = fixture(serverNow);
+  const socket = new FakeSocket();
+  const controller = new RemoteSessionController({
+    apiUrl: "https://example.invalid",
+    role: "spectator",
+    capability,
+    fetch: (async () =>
+      Response.json({ type: "snapshot", role: "spectator", session: dto, serverNow })) as typeof fetch,
+    socket: () => socket as unknown as WebSocket,
+  });
+  try {
+    await controller.initialize();
+    assert.equal(controller.getSnapshot().live?.bierfeest, undefined);
+    const deliver = (revision: number, bierfeest?: true) =>
+      socket.deliver({
+        type: "snapshot",
+        role: "spectator",
+        session: { ...dto, revision, ...(bierfeest ? { bierfeest } : {}) },
+        serverNow,
+      });
+    deliver(3, true);
+    assert.equal(controller.getSnapshot().live?.bierfeest, true);
+    // Display only: the wheels and winners stay the server's.
+    assert.deepEqual(controller.getSnapshot().session.activeDraw, dto.activeDraw);
+    deliver(4);
+    assert.equal(controller.getSnapshot().live?.bierfeest, undefined);
+  } finally {
+    controller.dispose();
+  }
+});

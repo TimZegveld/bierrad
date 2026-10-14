@@ -30,9 +30,9 @@ export function BeerWheel({
 }) {
   const theme = useTheme();
   const palette = theme.wheelColors ?? colors;
-  // A waiting Feestrad lets its rainbow drift around the names, one slot at a
-  // time; display only, it never moves the wheel or touches the draw.
-  const drifting = theme.feest && !spin && people.length > 0;
+  // A waiting Feestrad or Bierfeest lets its colours drift around the names,
+  // one slot at a time; display only, it never moves the wheel or touches the draw.
+  const drifting = (theme.feest || theme.bierfeest) && !spin && people.length > 0;
   const shift = useDrift(drifting);
   const displayed: readonly Participant[] = people.length
     ? people

@@ -2396,6 +2396,197 @@ body {
     animation: none !important;
   }
 }
+/* Bierfeest: a Bierrad round with a big turnout. Gold, amber and foam, over the top. */
+:root[data-bierfeest="true"] {
+  --gold: linear-gradient(
+    90deg,
+    #c97a12,
+    #f59f00,
+    #ffd43b,
+    #fff3bf,
+    #ffd43b,
+    #f59f00,
+    #c97a12
+  );
+  --gold-turn: conic-gradient(
+    from var(--feest-turn, 0deg),
+    #c97a12,
+    #f59f00,
+    #ffd43b,
+    #fff8e1,
+    #ffd43b,
+    #f59f00,
+    #c97a12
+  );
+  --bg: #fff8e6;
+  --primary: #f59f00;
+  --primary-hover: #ffb31a;
+  --primary-text: #2b1d05;
+  --primary-edge: #7a4a06;
+  --primary-shadow: #5c3703;
+  --primary-depth: 5px;
+  --badge-bg: #fffdf5;
+  --badge-border: #f2c86b;
+  --hub-bg: #fffaf0;
+  --final-bg: #fff6dc;
+  --final-border: #f2c86b;
+  --count-bg: #fff0c2;
+  --reveal-bg: #ffd43b;
+  --reveal-text: #2b1d05;
+  --strip-bg: #fffaf0cc;
+  --accent-text: #9a5b05;
+  background:
+    radial-gradient(circle at 15% 12%, #ffe8a366 0 16%, transparent 40%),
+    radial-gradient(circle at 85% 20%, #ffd8a866 0 14%, transparent 36%),
+    radial-gradient(circle at 50% 100%, #ffe08a55 0 26%, transparent 55%),
+    var(--bg);
+}
+:root[data-theme="dark"][data-bierfeest="true"] {
+  --text: #fff4d6;
+  --ink: #fff4d6;
+  --on-ink: #1f1606;
+  --bg: #1a1306;
+  --surface: #241a09;
+  --surface-raised: #2a1f0b;
+  --surface-soft: #30230c;
+  --tint: #30230c;
+  --border: #4a3714;
+  --primary: #ffc233;
+  --primary-hover: #ffd166;
+  --primary-text: #1f1606;
+  --primary-edge: #b77a0a;
+  --primary-shadow: #7a4f06;
+  --badge-bg: #241a09;
+  --badge-border: #6b4d12;
+  --hub-bg: #2a1f0b;
+  --final-bg: #241a09;
+  --final-border: #a8700d;
+  --count-bg: #30230c;
+  --strip-bg: #241a09cc;
+  --accent-text: #ffd166;
+  --wheel-face: #2a1f0b;
+  background:
+    radial-gradient(circle at 15% 12%, #f59f0022 0 16%, transparent 40%),
+    radial-gradient(circle at 85% 20%, #ffd43b1a 0 14%, transparent 36%),
+    radial-gradient(circle at 50% 100%, #f59f0026 0 26%, transparent 55%),
+    var(--bg);
+}
+/* A foam head along the top: a frothy white edge over flowing gold. */
+:root[data-bierfeest="true"] body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  height: 10px;
+  z-index: 20;
+  background:
+    radial-gradient(circle at 8px 0, #fff 5px, transparent 5.5px) 0 0 / 16px 8px repeat-x,
+    var(--gold) 0 0 / 200% 100%;
+  animation: bierfeest-foam 5s linear infinite;
+}
+/* Bubbles rising behind everything; display only. */
+:root[data-bierfeest="true"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle, #ffffffcc 0 3px, #f59f0055 3.5px, transparent 4.5px),
+    radial-gradient(circle, #ffffffaa 0 2px, #f59f0044 2.5px, transparent 3.5px),
+    radial-gradient(circle, #ffffff99 0 5px, #f59f0033 5.5px, transparent 7px);
+  background-size: 180px 220px, 120px 160px, 260px 340px;
+  background-position: 20px 0, 70px 40px, 140px 90px;
+  opacity: 0.7;
+  animation: bierfeest-bubbles 14s linear infinite;
+}
+:root[data-theme="dark"][data-bierfeest="true"] body::after {
+  opacity: 0.25;
+}
+:root[data-bierfeest="true"] .channel-strip {
+  border-bottom: 3px solid transparent;
+  border-image: var(--gold) 1;
+  backdrop-filter: blur(6px);
+}
+:root[data-bierfeest="true"] :is(.spectator-intro h1, .round-result h1, .channel-page h1) {
+  background: linear-gradient(90deg, #9a5b05, #e67700, #f59f00, #c97a12, #9a5b05);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: feest-slide 6s linear infinite;
+}
+:root[data-theme="dark"][data-bierfeest="true"] :is(.spectator-intro h1, .round-result h1, .channel-page h1) {
+  background-image: var(--gold);
+}
+:root[data-bierfeest="true"] .wheel-tile {
+  /* The frame lives inside the grid column, so the wheel shrinks to fit it. */
+  --frame: 12px;
+  position: relative;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 8px;
+  border-radius: 28px;
+  background:
+    linear-gradient(var(--surface-strong, #fff), var(--surface-strong, #fff)) padding-box,
+    var(--gold-turn) border-box;
+  border: 4px solid transparent;
+  box-shadow: 0 0 28px #f59f0040;
+  animation: feest-turn 8s linear infinite;
+}
+:root[data-theme="dark"][data-bierfeest="true"] .wheel-tile {
+  background:
+    linear-gradient(var(--surface), var(--surface)) padding-box,
+    var(--gold-turn) border-box;
+}
+:root[data-bierfeest="true"] .wheel-tile .wheel-shell,
+:root[data-bierfeest="true"] .spectator .wheel-grid .wheel-tile .wheel-shell {
+  width: min(100%, calc(var(--wheel, 510px) - 2 * var(--frame)));
+}
+:root[data-bierfeest="true"] .spectator .wheel-grid .wheel-tile .wheel-reveal {
+  max-width: calc(var(--wheel) - 2 * var(--frame));
+}
+:root[data-bierfeest="true"] .wheel-reveal.revealed {
+  background: var(--gold);
+  background-size: 200% 100%;
+  animation: feest-slide 3s linear infinite;
+  color: #2b1d05;
+}
+:root[data-bierfeest="true"] .friday-badge {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(var(--badge-bg), var(--badge-bg)) padding-box,
+    var(--gold) border-box;
+}
+/* While a Bierfeest waits, the gold slowly travels around the names. */
+:root[data-bierfeest="true"] .wheel-shell.is-waiting .wheel-segment {
+  transition: fill 0.85s linear;
+}
+.bierfeest-growth .feest-growth-card {
+  color: #2b1d05;
+  background:
+    linear-gradient(#fffdf5, #fffdf5) padding-box,
+    linear-gradient(90deg, #c97a12, #f59f00, #ffd43b, #f59f00, #c97a12) border-box;
+  box-shadow: 0 24px 60px rgb(122 74 6 / 35%);
+}
+@keyframes bierfeest-foam {
+  to {
+    background-position: 0 0, 200% 0;
+  }
+}
+@keyframes bierfeest-bubbles {
+  to {
+    background-position: 20px -220px, 70px -280px, 140px -590px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-bierfeest="true"] body::before,
+  :root[data-bierfeest="true"] body::after,
+  :root[data-bierfeest="true"] .wheel-tile,
+  :root[data-bierfeest="true"] .wheel-reveal.revealed,
+  :root[data-bierfeest="true"] :is(.spectator-intro h1, .round-result h1, .channel-page h1) {
+    animation: none !important;
+  }
+}
 .review-goal {
   font-weight: 500;
   color: var(--text-muted);

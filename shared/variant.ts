@@ -173,6 +173,31 @@ export const themes: Record<WheelVariant, WheelTheme> = {
  * A Koffierad round that grew into a Feestrad (several goals): rainbow, over
  * the top. Display only; each wheel still names its own goal.
  */
+/**
+ * A Bierrad channel round with many participants: the Bierrad's own texts in
+ * gold and foam. Display only; the hub keeps its 🍻.
+ */
+export const bierfeestTheme: WheelTheme = {
+  ...themes.beer,
+  name: "Bierfeest",
+  badge: "Vandaag is het feest",
+  question: "Wie haalt het bier voor het Bierfeest?",
+  crew: "feestploeg",
+  brigade: "bierfeestbrigade",
+  footer: "Met liefde gebrouwen voor een volle vrijdagmiddag.",
+  finale: "DE BIERBRIGADE VAN HET BIERFEEST",
+  ending: "Het hele feest heeft dorst. Maak ons trots.",
+  wheelColors: [
+    "#f8bd37",
+    "#fff1c9",
+    "#f2a541",
+    "#ffe08a",
+    "#e9a23b",
+    "#fbe3a8",
+    "#ffd25e",
+    "#f6c66b",
+  ],
+};
 export const feestTheme: WheelTheme = {
   name: "Feestrad",
   icon: "🌈",

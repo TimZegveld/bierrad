@@ -1,5 +1,9 @@
 import { reactionVariant, themeFor, themes } from "../../shared/variant";
-import { feestCopy, type RoundGoal } from "../../shared/channel";
+import {
+  BIERFEEST_THRESHOLD,
+  feestCopy,
+  type RoundGoal,
+} from "../../shared/channel";
 import type { CallOutcome } from "../channel/messages";
 import { createSession, withGoals } from "../../src/domain/drawEngine";
 import type { DrawGoal } from "../../src/domain/models";
@@ -60,6 +64,16 @@ export interface ChannelReminder {
   attempts: number;
   attemptedAt?: number;
 }
+/**
+ * Bierrad rounds only: the one thread reply once a waiting round becomes a
+ * Bierfeest. Holds no link or name; dropped unsent when the round falls back.
+ */
+export interface BierfeestNotice {
+  readyAt: number;
+  status: "pending" | "posting" | "posted" | "failed" | "uncertain" | "skipped";
+  attempts: number;
+  attemptedAt?: number;
+}
 export interface SlackState {
   grantHash: string;
   grantExpiresAt?: number;
@@ -83,6 +97,8 @@ export interface SlackState {
   card?: CallCard;
   /** Bierrad rounds only: the links in the thread shortly before the start. */
   reminder?: ChannelReminder;
+  /** Bierrad rounds only: the thread reply that the round became a Bierfeest. */
+  bierfeest?: BierfeestNotice;
 
   /** Started by a channel-bound Koffierad: no host, refreshes itself until the draw. */
   channelRound?: boolean;
@@ -232,6 +248,30 @@ function reconcileGoals(
   delete state.cookieEntries;
   state.count = participants.length;
   state.syncedAt = new Date(now).toISOString();
+}
+/**
+ * A Bierrad channel round with enough participants; once drawn, its frozen
+ * participants decide. Display only: never a pool, winner count or the draw.
+ */
+export function isBierfeest(record: StoredSession): boolean {
+  return (
+    record.variant === "beer" &&
+    !!record.slack?.channelRound &&
+    record.session.participants.length >= BIERFEEST_THRESHOLD
+  );
+}
+/**
+ * After a read of a waiting round: queues the Bierfeest reply once the round
+ * reaches the threshold, and drops an unsent one when it falls back. Once
+ * claimed it is never queued again, so the thread hears it at most once.
+ */
+export function queueBierfeestNotice(record: StoredSession, now: number) {
+  const state = record.slack;
+  if (!state) return;
+  const feest = isBierfeest(record);
+  if (state.bierfeest?.status === "pending" && !feest) delete state.bierfeest;
+  if (feest && !state.bierfeest && record.scheduledDraw?.status === "pending")
+    state.bierfeest = { readyAt: now, status: "pending", attempts: 0 };
 }
 /** The reactions a Feestrad counts, one per goal; undefined for one goal. */
 export function roundReactions(record: StoredSession) {

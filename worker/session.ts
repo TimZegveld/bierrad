@@ -1,6 +1,7 @@
 import type { WheelVariant } from "../shared/variant";
 import type { RoundGoal } from "../shared/channel";
 import {
+  isBierfeest,
   queueChannelNotice,
   queueResult,
   type SlackState,
@@ -145,6 +146,7 @@ export function publicSession(record: StoredSession): PublicBeerWheelSession {
           },
         }
       : {}),
+    ...(isBierfeest(record) ? { bierfeest: true as const } : {}),
     ...(reviewProgress(record) ? { review: reviewProgress(record) } : {}),
     ...(reviewOutcomes(record) ? { reviewOutcomes: reviewOutcomes(record) } : {}),
     expiresAt: new Date(record.expiresAt).toISOString(),
@@ -254,6 +256,9 @@ export function nextDeadline(record: StoredSession): number {
   if (slack?.reminder?.status === "pending") times.push(slack.reminder.readyAt);
   if (slack?.reminder?.status === "posting")
     times.push(slack.reminder.attemptedAt! + 120000);
+  if (slack?.bierfeest?.status === "pending") times.push(slack.bierfeest.readyAt);
+  if (slack?.bierfeest?.status === "posting")
+    times.push(slack.bierfeest.attemptedAt! + 120000);
 
   if (draw && s.state === "countdown") times.push(Date.parse(draw.startAt));
   if (draw && ["countdown", "spinning"].includes(s.state))

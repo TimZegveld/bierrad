@@ -100,7 +100,7 @@ export function SpectatorView({
           </p>
         )}
         {!show && session.participants.length > 0 && (
-          <ParticipantDrawer people={session.participants} />
+          <ParticipantDrawer session={session} />
         )}
       </div>
       {notice && (

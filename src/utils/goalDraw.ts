@@ -92,3 +92,35 @@ export function selectGoalWinners(
   });
   return winners;
 }
+/**
+ * Each participant's exact chance to win each goal under `selectGoalWinners`:
+ * one map per goal. Goals are disjoint wins, so a participant's chance to
+ * win any goal is the sum of their entries. Display only.
+ */
+export function goalOdds(
+  goals: readonly GoalPool[],
+): Map<string, number>[] {
+  if (!goals.length || goals.length > MAX_GOALS)
+    throw new Error("Een feestronde heeft één tot drie doelen.");
+  const pools = goals.map(weightsOf);
+  const none = new Set<string>();
+  const odds = goals.map(() => new Map<string, number>());
+  const subsets = Array.from({ length: 2 ** pools.length }, (_, mask) =>
+    pools.map((_, i) => i).filter((i) => mask & (1 << i)),
+  )
+    .map((indices) => ({ indices, ways: ways(indices.map((i) => pools[i]), none) }))
+    .filter((s) => s.ways > 0);
+  const size = Math.max(...subsets.map((s) => s.indices.length));
+  const largest = subsets.filter((s) => s.indices.length === size);
+  const total = largest.reduce((sum, s) => sum + s.ways, 0);
+  pools.forEach((pool, goal) => {
+    for (const [id] of pool) odds[goal].set(id, 0);
+  });
+  for (const { indices } of largest)
+    for (const goal of indices) {
+      const rest = indices.filter((i) => i !== goal).map((i) => pools[i]);
+      for (const [id, w] of pools[goal])
+        odds[goal].set(id, odds[goal].get(id)! + (w * ways(rest, new Set([id]))) / total);
+    }
+  return odds;
+}

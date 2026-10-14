@@ -222,6 +222,7 @@ Soms wil je koffie én water, of koffie én taart. Typ dan gewoon het tweede com
 - Aanhaken kan tot een minuut voor de start, en ieder rad maar één keer.
 - Elke aanhaking telt mee voor de daglimiet.
 - Bij de start kiest de server in één trekking per doel één haler, en **niemand wint twee keer**. Is iemand de enige voor water, dan haalt die het water en kiezen de andere raden uit de rest. Is er voor een doel niemand meer over, dan blijft dat rad stil.
+- Reviewen doe je alleen bij de raden waar je zelf aan meedeed, nooit bij jezelf. De sterlabels horen bij het rad van de haler: de taarthaler krijgt koeklabels, geen waterlabels.
 - Het Bierrad doet niet mee: dat is een aparte app.
 
 Zie de [securityreview](SECURITY.md#feestrad--reviewed-exception-2026-10-13).

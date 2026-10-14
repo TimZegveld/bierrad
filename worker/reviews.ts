@@ -35,6 +35,8 @@ export interface RoundReview {
     pseudonym: string | null;
     /** Feestrad only: the goal of the wheel this winner won. */
     goal?: RoundGoal;
+    /** Feestrad only: pseudonyms of the wheel's pool; only they review this winner. */
+    voters?: string[];
   }[];
   /** Pseudonyms of everyone who may still or already did vote. */
   eligible?: string[];
@@ -52,6 +54,8 @@ export interface ReviewResult {
   count: number;
   /** Shuffled, so their order says nothing about who wrote them. */
   texts: string[];
+  /** Feestrad only: the goal this winner won. */
+  goal?: RoundGoal;
 }
 export interface ReviewJob {
   /** Still to post, one reply per winner; the first is the current one. */
@@ -111,17 +115,23 @@ export function openReview(
         .name,
       mentionId: slackId,
       pseudonym: pseudonymOf(spin.winnerId),
-      ...(goal ? { goal: { ...goal } } : {}),
+      ...(goal
+        ? {
+            goal: { ...goal },
+            voters: (spin.participantIds ?? [])
+              .map(pseudonymOf)
+              .filter((p): p is string => !!p),
+          }
+        : {}),
     };
   });
-  const ratable = review.winners.filter((w) => w.mentionId && w.pseudonym);
   review.eligible = [
     ...new Set(
       draw.participantIds
         .map(pseudonymOf)
         .filter(
           (p): p is string =>
-            !!p && ratable.some((winner) => winner.pseudonym !== p),
+            !!p && ballotWinners(review, p).length > 0,
         ),
     ),
   ];
@@ -136,10 +146,17 @@ export function openReview(
     record.slack.card.attempts = 0;
   }
 }
+/** The winners one voter reviews: never themselves, and in a Feestrad only the wheels they joined. */
 function ballotWinners(review: RoundReview, pseudonym: string) {
   return (review.winners ?? [])
     .map((w, index) => ({ ...w, index }))
-    .filter((w) => w.mentionId && w.pseudonym && w.pseudonym !== pseudonym);
+    .filter(
+      (w) =>
+        w.mentionId &&
+        w.pseudonym &&
+        w.pseudonym !== pseudonym &&
+        (!w.voters || w.voters.includes(pseudonym)),
+    );
 }
 export function reviewBallot(
   record: StoredSession,
@@ -219,6 +236,7 @@ export function closeReview(record: StoredSession, now: number): void {
       average: total.sum / total.count,
       count: total.count,
       texts: shuffled(total.texts),
+      ...(winner.goal ? { goal: { ...winner.goal } } : {}),
     }));
   // Nobody could vote (for example one participant): the call never asked.
   const asked = !!review.eligible?.length;
@@ -231,10 +249,11 @@ export function closeReview(record: StoredSession, now: number): void {
   delete review.winners;
   if (results.length) {
     review.job = { results, status: "pending", readyAt: now, attempts: 0 };
-    review.outcomes = results.map(({ name, average, count }) => ({
+    review.outcomes = results.map(({ name, average, count, goal }) => ({
       name,
       average,
       count,
+      ...(goal ? { goal: { ...goal } } : {}),
     }));
   }
   const card = record.slack?.card;
@@ -289,10 +308,11 @@ export function reviewOutcomes(
 ): ReviewOutcome[] | undefined {
   const review = record.review;
   if (review?.status !== "closed" || !review.outcomes?.length) return;
-  return review.outcomes.map(({ name, average, count }) => ({
+  return review.outcomes.map(({ name, average, count, goal }) => ({
     name,
     average,
     count,
+    ...(goal ? { goal: { ...goal } } : {}),
   }));
 }
 export function reviewDeadline(record: StoredSession): number | undefined {

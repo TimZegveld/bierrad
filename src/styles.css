@@ -1338,6 +1338,31 @@ footer b {
   break-inside: avoid;
   overflow-wrap: anywhere;
 }
+.participant-drawer-panel ul.with-goals {
+  columns: 1;
+}
+.participant-drawer-panel .participant-odds-note {
+  margin: -4px 0 10px;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.participant-odds-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.participant-odds-row strong {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.participant-goal-odds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 13px;
+  color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+}
 .spectator-stage {
   position: relative;
   flex: 1;

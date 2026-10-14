@@ -213,6 +213,8 @@ Bij een Koekrad maakt iedere menselijke reactie met `:naam-koek:` het vak van di
 
 Wint Alice, dan kiest de server tegelijk met de trekking één van haar loten. Was dat een koekemoji, dan zet hij **Mede mogelijk gemaakt door... @degene die reageerde** in de threaduitslag; was het haar eigen 🍪, dan niet. Bier-, koffie- en waterreacties veranderen niet.
 
+Op de rondepagina toont het knopje **deelnemers** (bijvoorbeeld ☕ 6 deelnemers) iedereen met diens winkans, precies zoals de server trekt: een groter koekvak geeft een grotere kans. Bij een Feestrad staat per deelnemer de kans per rad waar die aan meedoet, en daarboven de kans om één van de raden te winnen. De kansen zijn alleen ter info en berekend uit wat de pagina al toont; ze beïnvloeden de trekking niet.
+
 ## Feestrad 🌈
 
 Soms wil je koffie én water, of koffie én taart. Typ dan gewoon het tweede commando terwijl de eerste ronde nog wacht: een `/waterrad` of `/koekrad taart` tijdens een koffieronde haakt aan bij die ronde en het **Koffierad wordt een Feestrad**. Alle drie de raden kunnen samen.

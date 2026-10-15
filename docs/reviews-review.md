@@ -6,7 +6,7 @@ Implementatiereview tegen [SECURITY.md](../SECURITY.md#round-reviews--reviewed-e
 
 | Oppervlak | Autorisatie | Opmerkingen |
 | --- | --- | --- |
-| `POST /auth/slack/member` | Een geldige kanaallink (beheer-, aanvraag- of persoonlijke link) in een formulierbody | De Origin moet op de allowlist staan; daarom gebruikt de frontend het referrerbeleid `strict-origin` en heeft het formulier geen `rel="noreferrer"` (anders sturen browsers `Origin: null`). De body is `application/x-www-form-urlencoded`, hooguit 1 KiB, met precies één veld `capability` en zonder query. Er gaan hooguit 30 logins per kanaal per minuut. Daarna volgt Sign in with Slack met het doel `member-<locator>` in de logincookie. |
+| `POST /auth/slack/member` | Een geldige kanaallink (beheer-, aanvraag- of persoonlijke link) in een formulierbody | De Origin moet op de allowlist staan; daarom gebruikt de frontend het referrerbeleid `strict-origin` en heeft het formulier geen `rel="noreferrer"` (anders sturen browsers `Origin: null`). De body is `application/x-www-form-urlencoded`, hooguit 1 KiB, met precies één veld `capability` en zonder query. Er gaan hooguit 30 logins per kanaal per minuut. Daarna volgt Sign in with Slack met het doel en kanaal in een eenmalige serverzijdige loginpoging. |
 | `GET /auth/slack/callback` (doel member) | De bestaande OIDC-controles; alleen volwaardige leden van de workspace van de bot | Het gebruikerstoken wordt ingetrokken. De user-ID wordt alleen omgezet in een pseudoniem. De persoonlijke link komt alleen in het fragment terecht. Fouten komen uit op `#/koffie-login/<reden>`. |
 | `/api/channel`, rol `member` | De SHA-256-hash van een geheim van 256 bits, timing-safe vergeleken, met een vervaldatum | Heeft de rechten van de aanvraaglink, plus `review` en `logout`. Een member mag nooit beheren (403) en, net als elke kanaallink, nooit een ronde starten (400). |
 | `/api/channel` `setReviews` | Alleen de beheerder | Strikte vorm: `enabled` boolean, `minutes` ∈ {5, 10, 15, 30}. |
@@ -53,7 +53,7 @@ De reviews voor sessies die met Sign in with Slack waren gestart, met hun deelna
   - de tekst van de oproep met en zonder sterren, en hele sterren;
   - de threadpost met letterlijke quotes en zonder broadcast;
   - het opschonen van tekst;
-  - de logincookie met het doel `member`.
+  - de persoonlijke login met serverzijdig gebonden doel.
 - **`worker/tests/reviews-live.test.ts`** (echte Worker en SQLite, nep-Slack):
   - geweigerde login-starts (Origin, verkeerde link, extra veld, contenttype, GET);
   - persoonlijke logins via de aanvraag-, beheer- en persoonlijke link, waarbij een nieuwe login de oude link vervangt;
@@ -67,3 +67,7 @@ De reviews voor sessies die met Sign in with Slack waren gestart, met hun deelna
   - uitloggen, en roteren dat alle persoonlijke links beëindigt.
 - **`src/tests/channel.test.ts`:** de route `#/koffie-login/<reden>`.
 - **Visueel:** het stemformulier en de inlogkeuze, gecontroleerd in de ingebouwde browser op desktop en 375 px (koffie en water). Er is geen horizontale overloop, en verzenden zonder sterren geeft een foutmelding in de tekst.
+
+### Aanscherping 2026-10-13
+
+De loginbeschrijving is aangescherpt: de cookie bevat uitsluitend een eenmalige willekeurige handle; doel, app, state, nonce, vervaltijd en oorspronkelijke kanaaltoegang staan serverzijdig. Rotatie en intrekking worden bij afronding opnieuw gecontroleerd. Uitslagen blijven zo nodig tot vijf minuten na de reviewdeadline zichtbaar, nooit voorbij de sessieduur van één uur. Zie [de actuele onderhoudsreview](maintenance-security-review.md) voor de controles en deployvolgorde.
